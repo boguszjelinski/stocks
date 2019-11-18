@@ -1,0 +1,1 @@
+cc mpt.c -w -g -o ../mpt -w -L../../ipoptdll/lib/x64/ReleaseMKL -lIpOpt-vc10 -I../../ipoptdll/include/coin

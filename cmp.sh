@@ -1,0 +1,1 @@
+cc stocks.c -w -o ../stocks
