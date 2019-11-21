@@ -14,6 +14,8 @@
 #define TRUE 1
 
 #define NUMPERIODS 12
+// max number of simulations
+#define MAXSIM 50
 
 int main_ipopt(float min_ret);
 
@@ -30,7 +32,7 @@ char comment[1000], divcomment[1000];
 
 float price[MAXCO][MAXQU], price_at_date[MAXCO], divid[MAXCO][MAXQU/5], var,
        first_price[MAXCO], last_price[MAXCO], stock_return[MAXCO][NUMPERIODS];
-float Diff[MAXCO][NUMPERIODS], weights[MAXCO], wallet;
+float Diff[MAXCO][NUMPERIODS], weights[MAXCO], wallet, howitwent[MAXSIM];
 
 time_t to_seconds(const char *date)
  { struct tm storage={0,0,0,0,0,0,0,0,0};
@@ -212,6 +214,7 @@ void simulate (
   char the_date[11]; int the_date_secs;
   char the_prev_date[11]; int the_prev_date_secs;
   time_t sec_start, sec_stop;
+
   sec_start = time (NULL);
    
   //reset_portfolio();
@@ -222,42 +225,45 @@ void simulate (
   fprintf (ff, "Period's length: %d months\n", period_length);  
   fprintf (ff, "Number of periods in risk assessment: %d\n", risk_ret_periods);
   fprintf (ff, "Min expected return: %5.4f\n", min_ret);
-  fprintf (ff, "Wallet content: %7.2f\n", wallet);
+  fprintf (ff, "Wallet content: %8.2f\n", wallet);
   
   for (s=0; s<sim_periods; s++)
   {
+	  divid_paid_total=0.0;
      // the date when we buy and sell. It has to be after the 'historic' data for portfolio selection, so +risk_ret_periods
     fprintf (ff, "============================================\n");
 
     gen_date (year, (s+risk_ret_periods)*period_length, the_date);
+
     the_date_secs = to_seconds(the_date);
-    gen_date(year, (s+risk_ret_periods-1)*period_length, the_prev_date); // -1
+    gen_date(year, (s+risk_ret_periods-1)*period_length, the_prev_date); // -1 - one period length back in time
     the_prev_date_secs = to_seconds(the_prev_date);
 
     fprintf (ff, "Portfolio rebuild on: %s\nCurrent value before rebuild:\n", the_date);
     // finding the price of stocks on that day; all stocks as it will be used for purchase also
     for (i=0; i<numb_of_stocks; i++)
      for (j=0; j<quotecount[i]; j++)
-       if (date_int[i][j] <= the_date_secs) // assuming that date[i][0] is near today. otherwise it should be >=. Depends on how Yahoo generates the CSV files
+       if (date_int[i][j] <= the_date_secs) // assuming that date[i][0] is nearer today than [i][1]. otherwise it should be >=. Depends on how Yahoo generates the CSV files
        { price_at_date[i] = price[i][j];
          break;
        }
-    fprintf (ff, " Stock | Vol. |  Price  |  Total   | Paid dividend\n-------+------+---------+----------+--------------\n");
+    fprintf (ff, " Stock |  Vol. |  Price   |    Total   | Paid dividend\n-------+-------+----------+------------+--------------\n");
     stock_value = 0.0; divid_paid=0.0;
     for (i=0; i<numb_of_stocks; i++)
      if (volume[i]>0) {
        divid_paid = dividends_paid (i, the_prev_date_secs, the_date_secs);
        divid_paid_total += divid_paid;
-       fprintf (ff,"%6s | %4d | %7.2f | %8.2f | %6.2f\n",
+       fprintf (ff,"%6s | %5d | %8.2f | %10.2f | %9.2f\n",
          symb[i], volume[i], price_at_date[i], price_at_date[i]*volume[i], divid_paid);
        stock_value += price_at_date[i]*volume[i];
      }
-    fprintf (ff, "-------+------+---------+----------+--------------\n");
-    fprintf (ff, "                  Total:|%9.2f |  %5.2f\n",stock_value, divid_paid_total);
-    fprintf (ff, "                        +----------+--------------\n");
+    fprintf (ff, "-------+-------+----------+------------+--------------\n");
+    fprintf (ff, "                    Total:| %10.2f | %9.2f\n",stock_value, divid_paid_total);
+    fprintf (ff, "                          +------------+--------------\n");
       // let us sell all - assumed there is no transaction cost; it would be stupid to sell and buy the same stock
+      // we assume we sell all and get 'stock_value', and maybe buy same stock
     wallet += stock_value + divid_paid_total;
-    fprintf (ff, "In the wallet after sale: %7.2f\n\n", wallet);
+    fprintf (ff, "In the wallet after sale: %8.2f\n\n", wallet);
     for (i=0; i<numb_of_stocks; i++) volume[i]=0;
     fprintf (ff, "----------- NEW PORTFOLIO ------------------\n");
       //
@@ -267,24 +273,25 @@ void simulate (
       fprintf (ff, "ERROR: solution not found!\n");
     else 
     { for (i=0; i<numb_of_stocks; i++) volume[i]=0;
-      fprintf (ff, " Stock | W[%] | Vol. | Price \n-------+------+------+----------\n");
+      fprintf (ff, " Stock | W[%%] |  Vol. |  Price \n-------+------+-------+----------\n");
       // buy stock!
       stock_value=0.0;
       for (i=0; i<n; i++) // iterate thru the solver output
        if (weights[i]>0.0001) {
         volume[stock_idx[i]] = (wallet * weights[i])/price_at_date[stock_idx[i]]; // rounding down to integer
         if (volume[stock_idx[i]]>0) 
-        {  fprintf (ff,"%6s | %4.1f | %4d | %7.2f\n",
+        {  fprintf (ff,"%6s | %4.1f | %5d | %10.2f\n",
                  symb[stock_idx[i]], weights[i]*100, volume[stock_idx[i]], price_at_date[stock_idx[i]]);
            stock_value += volume[stock_idx[i]]*price_at_date[stock_idx[i]];
         }
       }
       // what is left in the wallet?
       wallet -= stock_value;
-      fprintf (ff, "-------+------+------+----------\n");
-      fprintf (ff, "              Total: |%8.2f\n", stock_value);
-      fprintf (ff, "In the wallet: %7.2f\n\n", wallet);
+      fprintf (ff, "-------+------+-------+----------\n");
+      fprintf (ff, "               Total: | %10.2f\n", stock_value);
+      fprintf (ff, "In the wallet: %8.2f\n\n", wallet);
     }
+    howitwent[s] = stock_value + wallet;
   }
   sec_stop = time (NULL);
   int hrs,mins,scs;
@@ -292,6 +299,10 @@ void simulate (
   mins = (sec_stop -sec_start - 3600*hrs)/60;
   scs = sec_stop -sec_start - 3600*hrs - mins*60;
   fprintf (ff, "\n Simulation took %dh %dm %ds\n\n", hrs, mins, scs);
+
+  fprintf (ff, "\nHow the value of wallet developed:\n");
+  for (s=0; s<sim_periods; s++)
+	  fprintf (ff, "%9.2f\n", howitwent[s]);
   fclose (ff);
   
 }
@@ -397,7 +408,7 @@ main (int argc, char* argv[])
   numb_of_stocks = read_share_symbols ("SP100.txt");
   for (i=0; i<numb_of_stocks; i++) read_history(i);
   
-  simulate (2000, 40, 3, 12, 0.035);
+  simulate (2000, 40, 3, 12, 0.035); // year, sim_periods in months, period_length, risk_ret_periods, min_ret
   
   //i = main_ipopt(0.035);  
   exit(0);
