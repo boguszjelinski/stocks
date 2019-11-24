@@ -109,11 +109,11 @@ public class StockSimulator {
 		    					double min_ret, BigDecimal wallet) throws IOException {
 		FileWriter fr = new FileWriter(new File(SIMUL_OUTPUT));
 		BufferedWriter bw = new BufferedWriter(fr);
-		bw.write("Markowitz Portfolio Selection (simulation)\n");
-		bw.write("Number of periods: " + sim_periods + "\n");
-		bw.write("Period's length: " + period_length + " months\n");  
-		bw.write("Number of periods in risk assessment: " + risk_ret_periods + "\n");
-		bw.write("Min expected return: " + min_ret + "\n");
+		bw.write("Markowitz Portfolio Selection (simulation)<BR>\n");
+		bw.write("Number of periods: " + sim_periods + "<BR>\n");
+		bw.write("Period's length: " + period_length + " months<BR>\n");  
+		bw.write("Number of periods in risk assessment: " + risk_ret_periods + "<BR>\n");
+		bw.write("Min expected return: " + min_ret + "<BR>\n");
 		bw.write("Wallet content: " + wallet.toString());
 		
 		List<StockInPortfolio> portfolio = new ArrayList<StockInPortfolio>();
@@ -167,7 +167,7 @@ public class StockSimulator {
 				
 				last = historicPricesTemp.get(0); 
 				Close first = historicPricesTemp.get(historicPricesTemp.size() - 1);
-				if (first == null || lastPrice == null) break; // error
+				if (first == null || lastPrice == null || first.price == null || first.price.equals(0)) break; // error
 				// summing dividends
 				BigDecimal sum = new BigDecimal(0);
 				if (historicDividendsTemp != null && historicDividendsTemp.size()>0)
@@ -175,6 +175,7 @@ public class StockSimulator {
 						if (div.price != null)
 							sum = sum.add(div.price);
 				benefits[idx][i] = last.price.subtract(first.price).add(sum).doubleValue();
+				benefits[idx][i] /= first.price.doubleValue();
 			}
 			if (i == periods_number) { // no error, it will go to solver
 				goodTickers[idx] = symbol;
