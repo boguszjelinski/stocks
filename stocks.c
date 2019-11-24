@@ -3,7 +3,7 @@
 #include <math.h>
 
 #define MAXCO 102  // max number of companies
-#define MAXQU 3200  // max number of quotations
+#define MAXQU 5000  // max number of quotations
 #define MAXST 4   // max number of stocks in portfolio
 #define SECSYEAR 31536000 // number of seconds in a year 60*60*24*365
 #define SECSPERDAY 86400 // seconds daily
@@ -30,7 +30,7 @@ char cmd[MAXCO], symb[MAXCO][10], nme[MAXCO][80], date[MAXCO][MAXQU][12], date_f
       prev_volume[MAXST]; // number of stock to be sold to get the money for a better stock
   float maxyields[MAXST]={0.0,0.0,0.0,0.0};
 
-int old_count=0; // how many stock do not change in the portfolio
+//int old_count=0; // how many stock do not change in the portfolio
 char comment[1000], divcomment[1000], buycomment[1000];
 float wallet, invested, sold;
 
@@ -146,11 +146,11 @@ void generate_history_HTMLs(void)
     color=0;
     for (j=0; j<quotecount[i]; j++)
      //if (price[i][j]>0.0)
-     { if (color) kolor="silver"; else kolor="white";
-       fprintf (ff,"<tr><td bgcolor=%s align=right>%s</td><td bgcolor=%s align=right>%6.2f</td></tr>\n", 
-         kolor, date[i][j], kolor, price[i][j]);
-       if (color) color =0; else color=1;
-     }
+	{ if (color) kolor="silver"; else kolor="white";
+	  fprintf (ff,"<tr><td bgcolor=%s align=right>%s</td><td bgcolor=%s align=right>%6.2f</td></tr>\n",
+		 kolor, date[i][j], kolor, price[i][j]);
+	  if (color) color =0; else color=1;
+	}
     fprintf (ff, "</table></center></body></html>\n");
     fclose (ff);
     // DIVID
@@ -210,13 +210,13 @@ float generate_report(FILE *ff, char * till, int is_last, float div_paid)
    if (is_last)
     fprintf (ff, "<tr><td bgcolor=grey><font color=white>Total assets</td><td align=right><font color=red>%7.2f</b></td></tr></table><HR><P>\n", total_portfolio_value+wallet);
    else fprintf (ff, "<tr><td bgcolor=grey><font color=white>Total assets</td><td align=right>%7.2f</td></tr></table><HR><P>\n", total_portfolio_value+wallet);
-
+//printf ("%s %8.2f\n", till, total_portfolio_value + wallet);
    return total_portfolio_value+wallet;
 }
          
-void count_risks_and_benefits (int i, int the_date) // for the stock 'i'
+void count_risks_and_benefits (int i, int date_from, int date_to) // for the stock 'i'
 { FILE *ff; int next_div_date_int;
-   // div by seconds in the year; previously (the_date-start_date)/SECSYEAR
+   // div by seconds in the year; previously (date_to-start_date)/SECSYEAR
   // counting the AVERAGE dividend
   yearlydiv[i]=0; variance[i]=0; 
   price_at_date[i]=0.0; nextdiv[i]=0.0;
@@ -227,7 +227,7 @@ void count_risks_and_benefits (int i, int the_date) // for the stock 'i'
   div_in_range[i]=0; 
   averagediv[i]=0;
   for (j=0; j<divcount[i]; j++) 
-   if (div_date_int[i][j] >= (the_date-VARPERIOD+SECSPERDAY) && div_date_int[i][j] <= the_date)
+   if (div_date_int[i][j] >= date_from && div_date_int[i][j] <= date_to) // date_from = date_to-VARPERIOD+SECSPERDAY
      // ale dlaczego dla 3 lat wstecz? bo VARPERIOD to 3 lata
     { div_in_range[i]++;
       averagediv[i] += divid[i][j];
@@ -238,14 +238,14 @@ void count_risks_and_benefits (int i, int the_date) // for the stock 'i'
 
   // counting the VARIANCE 
   color=0;
-  sprintf (cmd,"../html/%s-div-%s.html",symb[i], datefromsecs (the_date, NULL) );
+  sprintf (cmd,"../html/%s-div-%s.html",symb[i], datefromsecs (date_to, NULL) );
   ff = fopen(cmd,"w"); 
   fprintf (ff, "<html><body><center><b>List of dividend payments</B><br>Stock symbol: %s", symb[i]);
   fprintf (ff, "<table border=1><th bgcolor=gray><font color=white>Date</th><th bgcolor=gray><font color=white>Ammount</th>\n");
   variance[i]=0.0;
   for (j=0; j<divcount[i]; j++)
   { 
-    if (div_date_int[i][j] >= (the_date-VARPERIOD+SECSPERDAY) && div_date_int[i][j] <=the_date)
+    if (div_date_int[i][j] >= date_from && div_date_int[i][j] <=date_to)
     { var = powf((divid[i][j]-averagediv[i]), 2.0);
       variance[i] += var;
       if (color) kolor="silver"; else kolor="white";
@@ -267,7 +267,7 @@ void count_risks_and_benefits (int i, int the_date) // for the stock 'i'
    // finding the PRICE for calculation of yield (it will not necessarily be the same as the end of the period
    // this price will also be used for stock purchase and sell of the previous portfolio
   for (j=0; j<quotecount[i]; j++)
-    if (date_int[i][j] <= the_date) // assuming that date[i][0] is near today. otherwise it should be >=. Depends on how Yahoo generates the CSV files
+    if (date_int[i][j] <= date_to) // assuming that date[i][0] is near today. otherwise it should be >=. Depends on how Yahoo generates the CSV files
      { price_at_date[i] = price[i][j]; 
        strcpy (date_for_price[i], date[i][j]);
        break; 
@@ -278,7 +278,7 @@ void count_risks_and_benefits (int i, int the_date) // for the stock 'i'
   found=0;
 
   for (j=0; j<divcount[i]; j++) // it was j=1, why?
-    if (div_date_int[i][j] <= the_date)
+    if (div_date_int[i][j] <= date_to)
      { found=1;
        nextdiv[i] = divid[i][j]; // ASSUMPTION: the value of last dividend - this will be NEXT PAYMENT value
        // the next dividend date will be the +time-span between the found one and the previuos one (if exists)
@@ -292,12 +292,12 @@ void count_risks_and_benefits (int i, int the_date) // for the stock 'i'
   if (found)
   { // now how many DAYS is it to the nearest dividend
     if (strlen(nextdivdate[i])>0)
-      daystilldiv[i] = (next_div_date_int - the_date) / (SECSPERDAY);
+      daystilldiv[i] = (next_div_date_int - date_to) / (SECSPERDAY);
     else daystilldiv[i] = -1;
   }
   else 
     fprintf (flog, "Error - next dividend day not found for day %s for stock:%s (divcount: %d; quotecount: %d) \n", 
-        datefromsecs(the_date, NULL), symb[i], divcount[i], quotecount[i]);  
+        datefromsecs(date_to, NULL), symb[i], divcount[i], quotecount[i]);
 }
 
 // find a price for a date or a date earlier 
@@ -317,7 +317,7 @@ void find_best_stocks (float max_var, int mindivcount)  // find 'MAXST' best sto
   { maxyields[k]=0.0;
     for (i=0; i<numb_of_stocks; i++)
       if (divcount[i]>0 && quotecount[i]>0 && variance[i]<=max_var && div_in_range[i] >= mindivcount 
-          && yearlydiv[i]/price_at_date[i]>maxyields[k])  // previously yearlydiv[i]/price_at_date[i]  
+          && (nextdiv[i] / price_at_date[i]) / daystilldiv[i] > maxyields[k])  // previously yearlydiv[i]/price_at_date[i]
             // nextdiv[i]/price_at_date[i])/daystilldiv[i]
       { // check if already put into the portfolio
         found=0;
@@ -328,6 +328,7 @@ void find_best_stocks (float max_var, int mindivcount)  // find 'MAXST' best sto
          }
         if (!found)
         { maxyields[k] = (nextdiv[i] / price_at_date[i]) / daystilldiv[i]; // previously yearlydiv[i]/price_at_date[i]
+        																// two different approaches
           maxyieldindex[k]=i;
         }
       }
@@ -346,30 +347,18 @@ float sell_previous_portfolio (void)
 { int k,m,found;
   float value=0.0, price;
   char str[200];
-  old_count=0;
   memset(comment,0,sizeof(comment));
   sold=0.0;
-  
   if (prev_maxyieldindex[0]==-1) return 0.0; // first period
-  
   for (k=0; k<MAXST; k++)
-  { // check if it is also in the new portfolio
-    found=0;
-    for (m=0; m<MAXST && !found; m++)
-     if (prev_maxyieldindex[k]==maxyieldindex[m]) // yeah, it will stay in the portfolio
-     { found=1;
-       old_count++; // we need this to devide the investment ammount equally
-       //if (volume[k]<prev_volume[k]) we have to sell, but do it in the buy portfolio as we don't know the wallet value
-     }
-    if (!found) // it will be replaced, sell it at the current price!
-    { //price = find_price_4_date (prev_maxyieldindex[k], date_secs);
+  {
+     //price = find_price_4_date (prev_maxyieldindex[k], date_secs);
       value += price_at_date[prev_maxyieldindex[k]] * prev_volume[k];
       sprintf (str, "<font color=black>[<B>%s</B>|%d|%5.2f|%5.2f]</font> ", 
         symb[prev_maxyieldindex[k]], prev_volume[k], price_at_date[prev_maxyieldindex[k]], 
         price_at_date[prev_maxyieldindex[k]] * prev_volume[k]);
       strcat (comment, str); 
       //prev_maxyieldindex[k]=-1;
-    }
   }
   sold = value;
   return value;
@@ -395,28 +384,27 @@ void buy_new_stock (void)
   float spent=0.0, to_invest=0.0; // that is a rough assumption - does not take into considaration the number of stock that will stay in the portfolio
   invested=0.0;
   memset(buycomment,0,sizeof(buycomment));
-  to_invest = wallet / (MAXST-old_count); // just an assumption - it is split equally (sounds stupid)
+  to_invest = wallet / MAXST; // just an assumption - it is split equally (sounds stupid)
   //to_invest = wallet / (MAXST-old_count);
   // now buy the new stock
   for (k=0; k<MAXST; k++)
   { // check if it was in the previous portfolio
     spent=0.0;
-    found=0;
-    for (m=0; m<MAXST && !found; m++)
-      if (prev_maxyieldindex[m]==maxyieldindex[k]) // yeah, it was and it will stay
-      { found=1;
-        volume[k]=prev_volume[m];
-      }
-    if (!found) 
-      volume[k] = (int) (to_invest/price_at_date[maxyieldindex[k]]);
-      
-    if (!found && wallet >= price_at_date[maxyieldindex[k]] * volume[k]) // new stock to be bought
+    if (price_at_date[maxyieldindex[k]]<0.000001) {
+    	  printf("price at date is wrong\n");
+    	  exit(0);
+    }
+    volume[k] = (int) (to_invest/price_at_date[maxyieldindex[k]]);
+    if (wallet >= price_at_date[maxyieldindex[k]] * volume[k]) // new stock to be bought
     { spent = price_at_date[maxyieldindex[k]] * volume[k];
       invested += spent;
       wallet -= spent;
       sprintf (str, "[<B>%s</B>|%d|%5.2f|%5.2f] ", symb[maxyieldindex[k]], volume[k], 
           price_at_date[maxyieldindex[k]], spent);
       strcat (buycomment, str); 
+    }
+    else {
+    	// TODO:
     }
   }
 }
@@ -437,6 +425,7 @@ float simulate (FILE *f, FILE *fpl, char * colour, int simidx, int numb_of_perio
         int start, int length, float variance, int mindividnumber)
 { int s,i, is_last;   char filename[20];
   float assets=0.0, divid_paid;
+
   reset_portfolio();
 /*  fprintf (f, "<font color=blue><B><a href= sim-%d.html>Simulation</a> - date: %s, number of periods: %d, length of period (days): %d</font><BR>\n", 
       simidx, datefromsecs(start,NULL), numb_of_periods, length/SECSPERDAY);
@@ -449,7 +438,7 @@ float simulate (FILE *f, FILE *fpl, char * colour, int simidx, int numb_of_perio
   { divid_paid=0.0;
     for (i=0; i<numb_of_stocks; i++) // numb_of_stocks = number of rows in SP100.txt
       if (divcount[i]>MINDIVCOUNT && quotecount[i]>0)
-        count_risks_and_benefits (i, start);
+        count_risks_and_benefits (i, start - VARPERIOD+SECSPERDAY, start); // VARPERIOD = 3 years
     backup_previous_portfolio();
     find_best_stocks (variance, mindividnumber);
     wallet += sell_previous_portfolio();
@@ -517,7 +506,7 @@ main (int argc, char* argv[])
   // reading the PRICE and DIVIDEND tables
   for (i=0; i<numb_of_stocks; i++) read_history(i);
 
-  generate_history_HTMLs();
+ // generate_history_HTMLs();
   
   color=0;
   f = fopen("../html/index.html","w");
@@ -547,8 +536,17 @@ main (int argc, char* argv[])
       fprintf (fplot, "%7.5f ", v);
       if (col) colour="silver"; else colour="white";
       fprintf (f, "<tr><td bgcolor=%s align=center>%7.5f</td>", colour, v);
-      for (p=arg_p2; p>=arg_p1; p--)
-      { avg_assets += simulate (f,fplot, colour, simindx, p, initial_date, SECSYEAR/p, v, min_numb_of_divid);
+      //for (p=arg_p2; p>=arg_p1; p--)
+      //for (p=1; p<=4; p*=2) // year, half year, quorter
+      {
+    	/*avg_assets += simulate (f, fplot, colour, simindx,
+    			10*p,  // numb_of_periods, should total to 10 years with 'length' beneath
+				initial_date,
+				SECSYEAR/p, //length,
+				v, // variance
+				min_numb_of_divid);
+				*/
+    	avg_assets += simulate (f, fplot, colour, simindx, 10, initial_date, SECSYEAR, v, min_numb_of_divid);
         simindx++;
         sim_count++;
       }
