@@ -8,7 +8,7 @@
 #define SECSYEAR 31536000 // number of seconds in a year 60*60*24*365
 #define SECSPERDAY 86400 // seconds daily
 #define VARPERIOD 3*SECSYEAR  // ??? dlaczego 3
-#define FUND 1000.0
+#define FUND 100000.0
 #define MINDIVCOUNT 12
 
 const int year_count = VARPERIOD/SECSYEAR;
@@ -22,7 +22,7 @@ char cmd[MAXCO], symb[MAXCO][10], nme[MAXCO][80], date[MAXCO][MAXQU][12], date_f
 
  
   float price[MAXCO][MAXQU], price_at_date[MAXCO], divid[MAXCO][MAXQU/5], 
-     averagediv[MAXCO], yearlydiv[MAXCO], variance[MAXCO], var, nextdiv[MAXCO];
+     averagediv[MAXCO], yearlydiv[MAXCO], variance[MAXCO], var, nextdiv[MAXCO], yield[MAXCO];
   int divcount[MAXCO], quotecount[MAXCO], div_in_range[MAXCO], daystilldiv[MAXCO], div_date_int[MAXCO][MAXQU/5], date_int[MAXCO][MAXQU];
   // portfolio description
   int found, maxyieldindex[MAXST]={-1,-1,-1,-1}, prev_maxyieldindex[MAXST]={-1,-1,-1,-1}, 
@@ -214,7 +214,7 @@ float generate_report(FILE *ff, char * till, int is_last, float div_paid)
    return total_portfolio_value+wallet;
 }
          
-void count_risks_and_benefits (int i, int date_from, int date_to) // for the stock 'i'
+void count_risks_and_benefits (int i, int date_from, int date_to, int period_len) // for the stock 'i'
 { FILE *ff; int next_div_date_int;
    // div by seconds in the year; previously (date_to-start_date)/SECSYEAR
   // counting the AVERAGE dividend
@@ -246,7 +246,7 @@ void count_risks_and_benefits (int i, int date_from, int date_to) // for the sto
   for (j=0; j<divcount[i]; j++)
   { 
     if (div_date_int[i][j] >= date_from && div_date_int[i][j] <=date_to)
-    { var = powf((divid[i][j]-averagediv[i]), 2.0);
+    { var = powf((divid[i][j]-averagediv[i]), 2.0); // this is ok for variance - dividend is payd each quorter, we use quorter in other simulations for VAR calculation
       variance[i] += var;
       if (color) kolor="silver"; else kolor="white";
       fprintf (ff, "<tr><td bgcolor=%s align=center>%s</td><td bgcolor=%s align=right>%6.2f</td></tr>\n", 
@@ -270,6 +270,9 @@ void count_risks_and_benefits (int i, int date_from, int date_to) // for the sto
     if (date_int[i][j] <= date_to) // assuming that date[i][0] is near today. otherwise it should be >=. Depends on how Yahoo generates the CSV files
      { price_at_date[i] = price[i][j]; 
        strcpy (date_for_price[i], date[i][j]);
+       if (price_at_date[i] > 0)
+    	   yield[i] = averagediv[i] / price_at_date[i];
+       else yield[i] = 0.0;
        break; 
      }
      
@@ -317,21 +320,13 @@ void find_best_stocks (float max_var, int mindivcount)  // find 'MAXST' best sto
   { maxyields[k]=0.0;
     for (i=0; i<numb_of_stocks; i++)
       if (divcount[i]>0 && quotecount[i]>0 && variance[i]<=max_var && div_in_range[i] >= mindivcount 
-          && (nextdiv[i] / price_at_date[i]) / daystilldiv[i] > maxyields[k])  // previously yearlydiv[i]/price_at_date[i]
+          && yield[i] > maxyields[k]) // (nextdiv[i] / price_at_date[i]) / daystilldiv[i]  // previously yearlydiv[i]/price_at_date[i]
             // nextdiv[i]/price_at_date[i])/daystilldiv[i]
-      { // check if already put into the portfolio
-        found=0;
-        for (m=0; m<k; m++)
-         if (maxyieldindex[m]==i)
-         { found=1;
-           break;
-         }
-        if (!found)
-        { maxyields[k] = (nextdiv[i] / price_at_date[i]) / daystilldiv[i]; // previously yearlydiv[i]/price_at_date[i]
-        																// two different approaches
-          maxyieldindex[k]=i;
-        }
+      {
+        maxyields[k] = yield[i];
+        maxyieldindex[k] = i;
       }
+    yield[maxyieldindex[k]] = 0; // don't consider for the rest of portfolio
   }
 }
 
@@ -417,6 +412,7 @@ void reset_portfolio (void)
     volume[i]=0; 
     prev_volume[i]=0;
     maxyields[i]=0.0;
+    yield[i] = 0.0;
   }
   wallet=FUND;
 }
@@ -438,7 +434,7 @@ float simulate (FILE *f, FILE *fpl, char * colour, int simidx, int numb_of_perio
   { divid_paid=0.0;
     for (i=0; i<numb_of_stocks; i++) // numb_of_stocks = number of rows in SP100.txt
       if (divcount[i]>MINDIVCOUNT && quotecount[i]>0)
-        count_risks_and_benefits (i, start - VARPERIOD+SECSPERDAY, start); // VARPERIOD = 3 years
+        count_risks_and_benefits (i, start - VARPERIOD+SECSPERDAY, start, 3 /* months*/); // VARPERIOD = 3 years
     backup_previous_portfolio();
     find_best_stocks (variance, mindividnumber);
     wallet += sell_previous_portfolio();
@@ -520,6 +516,7 @@ main (int argc, char* argv[])
     initial_date = starting_date_secs;
     fprintf (f, "Starting date: %s<table border=1>", datefromsecs(initial_date,NULL) );
     sim_count=0;
+
     avg_assets=0.0; // let us count the average asset increase for the whole simulation table
     
     printf ("Variance |");
@@ -537,7 +534,7 @@ main (int argc, char* argv[])
       if (col) colour="silver"; else colour="white";
       fprintf (f, "<tr><td bgcolor=%s align=center>%7.5f</td>", colour, v);
       //for (p=arg_p2; p>=arg_p1; p--)
-      //for (p=1; p<=4; p*=2) // year, half year, quorter
+      for (p=1; p<=4; p*=2) // year, half year, quorter
       {
     	/*avg_assets += simulate (f, fplot, colour, simindx,
     			10*p,  // numb_of_periods, should total to 10 years with 'length' beneath
@@ -546,7 +543,7 @@ main (int argc, char* argv[])
 				v, // variance
 				min_numb_of_divid);
 				*/
-    	avg_assets += simulate (f, fplot, colour, simindx, 10, initial_date, SECSYEAR, v, min_numb_of_divid);
+    	avg_assets += simulate (f, fplot, colour, simindx, 40, initial_date, SECSYEAR/4, v, min_numb_of_divid);
         simindx++;
         sim_count++;
       }
