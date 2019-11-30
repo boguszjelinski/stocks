@@ -23,7 +23,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
-
 import org.apache.commons.math3.stat.StatUtils;
 
 public class StockSimulator {
@@ -47,6 +46,14 @@ public class StockSimulator {
 	private static Map<String,List<Close>> prices;
 	private static Map<String,List<Close>> dividends; // .price will be the dividend paid on a day
 	private static Map<String,List<Stock>> stocks;
+	
+	private static final String style = "<style>" + 
+			"table {\n  border-collapse: collapse;\n}\n" + 
+			" th {\n  background: #ccc;\n}\n\n" + 
+			"th, td {\r  border: 1px solid #ccc;\n  padding: 8px;\n}\n\n" + 
+			"tr:nth-child(even) {\n  background: #efefef;\n}\n\n" + 
+			"tr:hover {\n  background: #d1d1d1;\n}\n" + 
+			"</style>\n"; 
 	
 	private static class Close {  // quote
 		public Close(String date, String price) {
@@ -93,14 +100,14 @@ public class StockSimulator {
 	}
 	
 	private static class PortfolioWithWallet {
-		public PortfolioWithWallet(double wallet, List<StockInPortfolio> portfolio, double portfolio_value) {
+		public PortfolioWithWallet(BigDecimal wallet, List<StockInPortfolio> portfolio, BigDecimal portfolio_value) {
 			this.wallet = wallet;
 			this.portfolio = portfolio;
 			this.portfolio_value = portfolio_value;
 		}
-		public double wallet; // TODO: this should be BigDecimal
+		public BigDecimal wallet; 
 		public List<StockInPortfolio> portfolio;
-		public double portfolio_value;
+		public BigDecimal portfolio_value;
 	}
 	
 	public static void main(String[] args) throws IOException {
@@ -119,33 +126,34 @@ public class StockSimulator {
 		
 		System.out.print("\n");
 		ExecutorService executor= Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
-		for (double r = 0.015; r <= 16.0; r *= 5) 
+		for (double r = 0.0005; r <= 0.0025; r *= 5) { 
 			for (int i=0; i<period_length.length; i++) {
 				final int len = period_length[i]; 
 				final double risk = r;
 				Runnable thread = new Runnable() {
 					public void run() {
 						try {
-							double assets = simulate(2000, 120/len, len, 
-														12, risk, new BigDecimal(BUDGET));
+							BigDecimal assets = simulate(2000, 120/len, len, 12, risk, new BigDecimal(BUDGET));
+												// year, sim_periods in months, period_length, risk_ret_periods, min_ret
 							System.out.print("(" + risk + "," + len + "," + assets + ")\n");
 						} catch (IOException e) {
-							// TODO Auto-generated catch block
 							e.printStackTrace();
-						} // year, sim_periods in months, period_length, risk_ret_periods, min_ret
+						} 
 					}
 				};
 				executor.execute(thread);
 			}
+		}
 		executor.shutdown();
 	}
 	
-	private static double simulate (int year, int sim_periods, // in month
+	private static BigDecimal simulate (int year, int sim_periods, // in month
 		    					int period_length, int risk_ret_periods, 
 		    					double return_or_risk, BigDecimal wallet) throws IOException {
 		FileWriter fr = new FileWriter(new File(ROOT_DIR + "simul-"+period_length+"-"
 		    					+(return_or_risk+"").replace('.', '_') +".html"));
 		BufferedWriter bw = new BufferedWriter(fr);
+		bw.write("<table>" + style + "<BODY>");
 		bw.write("Number of periods: " + sim_periods + "<BR>\n");
 		bw.write("Period's length: " + period_length + " months<BR>\n");  
 		bw.write("Number of periods in risk assessment: " + risk_ret_periods + "<BR>\n");
@@ -176,10 +184,11 @@ public class StockSimulator {
 									period_length, risk_ret_periods, wallet, return_or_risk, MAX_STOCKS, bw);
 									*/
 			portfolio = stockAndWallet.portfolio;
-			wallet = new BigDecimal(stockAndWallet.wallet);
+			wallet = stockAndWallet.wallet;
 		}
+		bw.write("</BODY></HTML>");
 		bw.close();
-		return wallet.doubleValue() + stockAndWallet.portfolio_value;
+		return wallet.add(stockAndWallet.portfolio_value);
 	}
 	
 	private static PortfolioWithWallet findBestPortfolioWith_MPT(int type, LocalDate startDate, 
@@ -244,7 +253,7 @@ public class StockSimulator {
 			constructJuliaTask(cov, mean, min_r, cmd, outFile);
 			runJulia(JULIA_CMD + " "+ cmd + " > julia.out 2>nul");
 		}
-		return createPortfolioFromSolver(budget.doubleValue(), idx, goodTickers, lastPrice, bw, outFile);
+		return createPortfolioFromSolver(budget, idx, goodTickers, lastPrice, bw, outFile);
 	}
 	
 	private static double[] countMean(int share_count, double[][] data, int periods_number) {
@@ -453,7 +462,7 @@ public class StockSimulator {
 			double[][] cov = myCov(idx, periods_number, benef, mean); // TODO: double[][] cov = new Covariance(benef).getCovarianceMatrix().getData();
 			constructJuliaTask(cov, mean, max_risk, cmd, outFile);
 			runJulia(JULIA_CMD + " "+ cmd + " > julia.out 2>nul");
-			return createPortfolioFromSolver(budget.doubleValue(), idx, goodTickers, lastClose, bw, outFile);
+			return createPortfolioFromSolver(budget, idx, goodTickers, lastClose, bw, outFile);
 		}
 	}
 	
@@ -471,19 +480,19 @@ public class StockSimulator {
 			int volume = (int)(budget.doubleValue() * share / prices[idx].price.doubleValue()); 
 			portfolio.add(new StockInPortfolio(goodTickers[idx], volume));
 			bw.write("<TR><TD>"+ goodTickers[idx] +"</TD><TD>"+ String.format("%.1f",share*100.0) +"</TD><TD>"
-					   	+ volume +"</TD><TD>"+ prices[idx].price 
-					   	+ "</TD><TD>" + prices[idx].price.multiply(new BigDecimal(volume))
+					   	+ volume +"</TD><TD align=right>"+ String.format("%.2f",prices[idx].price) 
+					   	+ "</TD><TD align=right>" + String.format("%.2f", prices[idx].price.multiply(new BigDecimal(volume)))
 					   	+ "</TD></TR>\n");
 			total = total.add(prices[idx].price.multiply(new BigDecimal(volume)));
 		}
 		bw.write("</table>\n");
-		bw.write("Portfolio value: " + total + "<BR>");
+		bw.write("Portfolio value: " + String.format("%.2f", total) + "<BR>");
 		bw.write("In the wallet after stock purchase: " 
-				+ String.format("%.3f", budget.subtract(total).doubleValue()) + "<BR>");
-		return new PortfolioWithWallet(budget.subtract(total).doubleValue(), portfolio, total.doubleValue());
+				+ String.format("%.2f", budget.subtract(total).doubleValue()) + "<BR>");
+		return new PortfolioWithWallet(budget.subtract(total), portfolio, total);
 	}
 	
-	private static PortfolioWithWallet createPortfolioFromSolver(double budget, int size, String[] goodTickers, 
+	private static PortfolioWithWallet createPortfolioFromSolver(BigDecimal budget, int size, String[] goodTickers, 
 														Close[] prices, BufferedWriter bw, String outFile) throws IOException {
 		bw.write("<BR>New portfolio:\n<table border=1>");
 		bw.write("<TR><TH>Stock</TH><TH>W[%]</TH><TH> Vol. </TH><TH> Price</TH><TH> Total</TH></TR>\n"); 
@@ -496,14 +505,14 @@ public class StockSimulator {
 			   String line = br.readLine();
 			   weights[i] = Double.parseDouble(line); 
 			   if (weights[i]>MIN_SHARE)  {
-				   int volume = (int)(budget * weights[i] / prices[i].price.doubleValue()); 
+				   int volume = (int)(budget.doubleValue() * weights[i] / prices[i].price.doubleValue()); 
 				   
 				   if (volume > 0) {
 					   portfolio.add(new StockInPortfolio(goodTickers[i], volume));
 					   
-					   bw.write("<TR><TD>"+ goodTickers[i] +"</TD><TD>"+ String.format("%.1f",weights[i]*100) +"</TD><TD>"
-							   	+ volume +"</TD><TD>"+ prices[i].price 
-							   	+ "</TD><TD>" + prices[i].price.multiply(new BigDecimal(volume))
+					   bw.write("<TR><TD>"+ goodTickers[i] +"</TD><TD align=center>"+ String.format("%.1f",weights[i]*100) +"</TD><TD>"
+							   	+ volume +"</TD><TD align=right>"+ String.format("%.2f", prices[i].price) 
+							   	+ "</TD><TD align=right>" + String.format("%.2f", prices[i].price.multiply(new BigDecimal(volume)))
 							   	+ "</TD></TR>\n");
 					   total = total.add(prices[i].price.multiply(new BigDecimal(volume)));
 				   }
@@ -517,9 +526,9 @@ public class StockSimulator {
 			return null;
 		}
 		bw.write("</table>\n");
-		bw.write("Portfolio value: " + total + "<BR>");
-		bw.write("In the wallet after stock purchase: " + String.format("%.3f",budget-total.doubleValue()) + "<BR>");
-		return new PortfolioWithWallet(budget - total.doubleValue(), portfolio, total.doubleValue());
+		bw.write("Portfolio value: " + String.format("%.2f", total) + "<BR>");
+		bw.write("In the wallet after stock purchase: " + String.format("%.2f", budget.subtract(total)) + "<BR>");
+		return new PortfolioWithWallet(budget.subtract(total), portfolio, total);
 	}
 	
 	// this function serves only as a check of Apache Commons
@@ -542,7 +551,7 @@ public class StockSimulator {
 	private static BigDecimal showPortfolio(List<StockInPortfolio> portfolio, LocalDate dateFrom, 
 											LocalDate dateTo, BufferedWriter bw) throws IOException {
 		bw.write("Portfolio rebuild on: "+ dateTo +"<BR>\nCurrent value before rebuild:<table border=1>");
-		bw.write("<TR><TH>Stock</TH><TH> Vol. </TH><TH> Price </TH><TH> Total </TH><TH> Paid dividend</TH></TR>\n");
+		bw.write("<TR><TH>Stock</TH><TH> Vol. </TH><TH> Price </TH><TH> Total </TH><TH>Dividend</TH><TH> Dividend - details </TH></TR>\n");
 //		BigDecimal divid_paid_total= new BigDecimal(0);
 		BigDecimal total_price = new BigDecimal(0);
 		BigDecimal total_divid = new BigDecimal(0);
@@ -554,14 +563,15 @@ public class StockSimulator {
 				System.out.println("Error: a price for date not found");
 //			divid_paid_total = divid_paid_total.add(dividends.dividend);
 			
-		    bw.write("<TR><td>"+ stock.ticker +"</td><td>" + stock.number + "</td><td>" + price + "</td><td>" 
-		    		+ price.multiply(new BigDecimal(stock.number)) + "</td><td>" +dividends.dividend + "</td></TR>\n");
+		    bw.write("<TR><td>"+ stock.ticker +"</td><td>" + stock.number + "</td><td align=right>" + String.format("%.2f", price) 
+		    		+ "</td><td align=right>" + String.format("%.2f", price.multiply(new BigDecimal(stock.number))) 
+		    		+ "</td><td align=right>" + String.format("%.2f", dividends.dividend) + "</td><TD>"+ dividends.comment +"</td></TR>\n");
 		    total_price = total_price.add(price.multiply(new BigDecimal(stock.number)));
 		    total_divid = total_divid.add(dividends.dividend); 
 		}
 		bw.write("</table>");
-		bw.write("Value of stock sold: " + total_price + "<BR>\n");
-		bw.write("Value of dividend paid: " + total_divid + "<BR>\n");
+		bw.write("Value of stock sold: " + String.format("%.2f", total_price) + "<BR>\n");
+		bw.write("Value of dividend paid: " + String.format("%.2f", total_divid) + "<BR>\n");
 		return total_price.add(total_divid);
 	}
 	
@@ -578,16 +588,15 @@ public class StockSimulator {
 		List<Close> historicDividends = dividends.get(stock.ticker);
 		BigDecimal total = new BigDecimal(0);
 		BigDecimal number = new BigDecimal(stock.number);
-		String comment="<font color=black>[<B>"+ stock.ticker +"</B>|" + stock.number + "|";
+		String comment="";
 		
 		for (Close div: historicDividends) {
 			if ((div.date.isBefore(dateTo) && div.date.isAfter(dateFrom)) 
 					|| div.date.isEqual(dateFrom) ) { // div.date.isEqual(dateTo) belongs to the next iteration  
 				total = total.add(div.price.multiply(number));
-				comment += div.date + "|" + div.price +"|"; 
+				comment += div.date + ", " + div.price +"; "; 
 			}
 		}
-		comment += "</font>";
 		return new DividentWithComment(total, comment);
 	}
 	
