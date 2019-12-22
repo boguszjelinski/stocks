@@ -1,3 +1,7 @@
+/* 
+ *	Author: Bogusz Jelinski
+ */
+
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -10,7 +14,7 @@ import java.math.BigDecimal;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
+//import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -31,17 +35,17 @@ import org.apache.commons.math3.stat.correlation.Covariance;
 public class StockSimulator {
 
 	private static final String ROOT_DIR = "/home/dell/DIVID/";
-	private static final String SHARE_NAMES = ROOT_DIR + "GIT/SP100.txt";
+	private static final String SHARE_NAMES = ROOT_DIR + "data/SP100.txt";
 	private static final String JULIA_CMD = "C:\\Users\\dell\\AppData\\Local\\Julia-0.5.2\\bin\\julia";
 	private static final double MIN_SHARE = 0.0001; // minimal share of a stock we accept in a portfolio  
-	/*private static final double MIN_REVE = 0.035; // minimal revenue when minimizing risk
-	private static final double MAX_RISK = 0.015; // max risk when maximizing returns
-	*/
 	private static final double BUDGET = 100000.0; 
 	private static final int    MAX_STOCKS = 4; // how many stocks we will have in portfolio in "dividend arbitrage" (without solver)
 	private static final int 	MINIMIZE = 0;
 	private static final int 	MAXIMIZE = 1;
+	private static final int 	MONTHS_IN_YEAR = 12;
 	
+	private static final String	STRATEGY_MPT = "MPT";
+	private static final String	STRATEGY_DIV = "DIV";
 	
 	private static DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 	private static SimpleDateFormat sdf = new SimpleDateFormat("MM/dd/yyyy");
@@ -60,13 +64,18 @@ public class StockSimulator {
 			"tr:hover {\n  background: #d1d1d1;\n}\n" + 
 			"</style>\n"; 
 	
-	private static class Close {  // quote
+	private static class Close  implements Comparable<Close>  {  // quote
 		public Close(String date, String price) {
 			this.date = LocalDate.parse(date, formatter);
 			this.price = new BigDecimal(price);
 		}
 		public LocalDate date;
 		public BigDecimal price;
+		
+		@Override
+		public int compareTo(Close c) {
+		    return this.date.compareTo(c.date) * -1; // -1 as data in Yahoo started with 'today', not some date in the past
+		}
 	}
 	
 	private static class Split {  
@@ -87,7 +96,6 @@ public class StockSimulator {
 					this.dividendDate = null;
 				else this.dividendDate = sdf.parse(date.replace("\"",""));
 			} catch (ParseException e) {
-				// TODO Auto-generated catch block
 				System.out.println("parsing date failed, date: " + date + ", name: " + name);
 				this.dividendDate = null;
 			}
@@ -121,6 +129,7 @@ public class StockSimulator {
 			this.portfolio = portfolio;
 			this.portfolio_value = portfolio_value;
 		}
+		
 		public BigDecimal wallet; 
 		public List<StockInPortfolio> portfolio;
 		public BigDecimal portfolio_value;
@@ -132,36 +141,65 @@ public class StockSimulator {
 		prices = new HashMap<String,List<Close>>();
 		splits = new ArrayList<Split>();
 		dividends = new HashMap<String,List<Close>>();
-		stocks = new HashMap<String,List<Stock>>();
+		//stocks = new HashMap<String,List<Stock>>();
 		
 		for (String symbol: tickers) {
 			prices.put(symbol, readHistory(symbol, "-prc", 4));
 			dividends.put(symbol, readHistory(symbol, "-div", 1));
-			stocks.put(symbol, readStockName(symbol, "-nme"));
+			//stocks.put(symbol, readStockName(symbol, "-nme"));
 		}
 		readSplits("splits.txt");
 		
-		double[] risks = new double[]{0.003}; // , 0.005, 0.015, 0.075, 0.375}; 
+		double[] risks = new double[]{0.003, 0.005, 0.015, 0.075, 0.375}; 
 		int[] period_length = new int[]{1,3,6,12};
-		int[] benef_period_length = new int[]{3,6,9,12};
-		int[] benef_periods = new int[]{6,12,18,24};
+		int[] benef_period_length = new int[]{3}; //,6,9,12};
+		int[] benef_periods = new int[]{12}; //{6,12,18,24};
+		String strat = STRATEGY_DIV;
+		// overwriting defaults with command line arguments
+		for (int s =0 ; s<args.length; s++) {
+	       switch (args[s]) {
+	       case "-risk": 
+	    	   risks = new double[1];
+	    	   risks[0] = Double.parseDouble(args[s+1]);
+	    	   break;
+	       case "-rebalance_after": 
+	    	   period_length = new int[1];
+	    	   period_length[0] = Integer.parseInt(args[s+1]); 
+	    	   break;
+	       case "-estimation_number":
+	    	   benef_periods = new int[1];
+	    	   benef_periods[0] = Integer.parseInt(args[s+1]);
+	    	   break;
+	       case "-estimation_length": 
+	    	   benef_period_length = new int[1];
+	    	   benef_period_length[0] = Integer.parseInt(args[s+1]);
+	    	   break;
+	       case "-strategy":
+	    	   strat = args[s+1];
+	    	   break; 
+	       }
+	    }
 		
 		System.out.print("\n");
 		ExecutorService executor= Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
 		for (int r = 0; r < risks.length; r ++) { 
 			for (int i=0; i<period_length.length; i++) 
-			  //for (int per = 1; per < 2 /*benef_periods.length*/; per++)
-			//	  for (int per_len = 0; per_len < 1/*benef_period_length.length*/; per_len++)
+			   for (int per = 0; per < benef_periods.length; per++)
+				  for (int per_len = 0; per_len < benef_period_length.length; per_len++)
 			{
 				final int len = period_length[i];
-				final int benef_per = 12;// benef_periods[per];
-				final int benef_len = len; // benef_period_length[per_len];
+				final int benef_per = benef_periods[per]; // 12
+
+				final int benef_len = benef_period_length[per_len]; // len; in the article I use 'len' - the estimation period should be as long as the rebalance period
 				final double risk = risks[r];
+				final String strategy = strat;
+				
 				Runnable thread = new Runnable() {
 					public void run() {
 						try {
-							BigDecimal assets = simulate(2000, (12*16)/len, len, benef_per, benef_len, risk, new BigDecimal(BUDGET));
-												// year, sim_periods in months, period_length, risk_ret_periods, risk_ret_period_len, min_ret
+							BigDecimal assets = simulate(strategy, 2000, (MONTHS_IN_YEAR*16)/len, len, 
+															benef_per, benef_len, risk, new BigDecimal(BUDGET));
+									// year, sim_periods in months, period_length, risk_ret_periods, risk_ret_period_len, min_ret
 							System.out.print("(" + risk + "," + len + ","+ benef_per + ","+ benef_len + "," + assets + ")\n");
 							
 						} catch (IOException e) {
@@ -176,10 +214,11 @@ public class StockSimulator {
 		executor.shutdown();
 	}
 	
-	private static BigDecimal simulate (int year, int sim_periods, // in month
+	private static BigDecimal simulate (String strategy, int year, int sim_periods, // in month
 		    					int period_length, int benef_ret_periods, int benef_ret_period_len,
 		    					double return_or_risk, BigDecimal wallet) throws IOException {
-		FileWriter fr = new FileWriter(new File(ROOT_DIR + "simul-"+period_length+"-"
+		FileWriter fr = new FileWriter(new File(ROOT_DIR + strategy+
+				"-"+period_length+"-"
 		    					+(return_or_risk+"").replace('.', '_')+"-" + benef_ret_periods +"-"+ benef_ret_period_len +".html"));
 		BufferedWriter bw = new BufferedWriter(fr);
 		bw.write("<table>" + style + "<BODY>");
@@ -202,20 +241,26 @@ public class StockSimulator {
 		
 			// here we sell the stock virtually
 			wallet = wallet.add(stockWithDividend);
-			  
+// Figure 1.			  
 //System.out.println(wallet);
-
-			stockAndWallet = /*findBestPortfolioWith_MPT(MAXIMIZE,
+			switch (strategy) {
+			case STRATEGY_MPT: 
+				stockAndWallet = findBestPortfolioWith_MPT(MAXIMIZE,
 									dateTo.minusMonths(benef_ret_periods*benef_ret_period_len),
-									benef_ret_period_len, benef_ret_periods, wallet, period_length, return_or_risk, bw);
+									benef_ret_period_len, benef_ret_periods, wallet, period_length, 
+									return_or_risk, bw);
+				break;
+			case STRATEGY_DIV:
+				stockAndWallet = findAndBuyBestPortfolioWith_DIV(true, // make it simple, do not send to solver?
+									dateTo.minusMonths(benef_ret_periods*benef_ret_period_len),
+									benef_ret_period_len, benef_ret_periods, wallet, period_length, 
+									return_or_risk, MAX_STOCKS, bw);
+				break;
 							/*	findBestPortfolioWith_MPT(MINIMIZE,
 									dateTo.minusMonths(risk_ret_periods*period_length),
 									period_length, risk_ret_periods, wallet, MIN_REVE, bw);
 							*/	
-								findAndBuyBestPortfolioWith_DA(true,
-									dateTo.minusMonths(benef_ret_periods*benef_ret_period_len),
-									benef_ret_period_len, benef_ret_periods, wallet, period_length, return_or_risk, MAX_STOCKS, bw);
-							
+			}
 			portfolio = stockAndWallet.portfolio;
 			wallet = stockAndWallet.wallet;
 			
@@ -233,6 +278,7 @@ public class StockSimulator {
 		Close[] lastPrice = new Close[tickers.size()];
 		
 		int idx =0;
+		// this loop creates an array with benefits
 		for (String symbol: tickers) {
 			List<Close> historicPrices = prices.get(symbol);
 			List<Close> historicDividends = dividends.get(symbol);
@@ -272,11 +318,12 @@ public class StockSimulator {
 			}
 			
 		}
+		// having an array with benefits we will estimate mean and covariance
 		double[][] benef = crympData(benefits,  idx, periods_number);
 		double[] mean = countMean (idx, benef, periods_number);
 		double[][] cov = Covar(benef); //= myCov(idx, periods_number, benef, mean); // TODO: double[][] cov = new Covariance(benef).getCovarianceMatrix().getData();
 		
-		String ident = periods_number +"-"+ period_length+"-" + per_len +"-"+ (min_r+"").replace('.', '_') ;
+		String ident = per_len +"-"+ (min_r+"").replace('.', '_')+"-" + periods_number +"-"+ period_length;
 		String outFile = ROOT_DIR + "solver-"+ ident +".out";
 		if (type == MINIMIZE) {
 			String cmd = ROOT_DIR + "solver-"+ ident +".py";
@@ -315,6 +362,7 @@ public class StockSimulator {
 		return benef;
 	}
 	
+	// this is the MIN model - minimizing risk with assumed level of minimum earning
 	private static void constructPythonTask(double[][] cov, double[] mean, double min_reve, String cmd, String out) throws IOException {
 		FileWriter fw = new FileWriter(cmd);    
         fw.write("from cvxopt import matrix\n");
@@ -416,7 +464,7 @@ public class StockSimulator {
 	}
 	
 	// this will find a few outperforming stocks (max_shares) which have risks associated not greater than 'max_risk'
-	private static PortfolioWithWallet findAndBuyBestPortfolioWith_DA(boolean make_it_simple, 
+	private static PortfolioWithWallet findAndBuyBestPortfolioWith_DIV(boolean make_it_simple, 
 							LocalDate startDate, int period_length, int periods_number, BigDecimal budget, 
 							int per_len, double max_risk, int max_shares, BufferedWriter bw) throws IOException {
 		double[] benefits = new double[tickers.size()]; // for simple calculation
@@ -508,15 +556,18 @@ public class StockSimulator {
 		}
 	}
 	
+	// create a 1/N portfolio based on dividend yields
 	private static PortfolioWithWallet createSimplePortfolio(int max_shares, double[] benefits, BigDecimal budget, 
 					String[] goodTickers, Close[] prices, BufferedWriter bw) throws IOException {
 		List<StockInPortfolio> portfolio = new ArrayList<StockInPortfolio>();
 		BigDecimal total = new BigDecimal(0.0);
 		double share = (1.0/(double)max_shares);
+		double avg = 0.0; // for one of sharts in article about dividend yields over time
 		for (int s=0; s<max_shares; s++) {
 			// find the best 
 			List<Double> list = Arrays.stream(benefits).boxed().collect(Collectors.toList());
 			int idx = list.indexOf(Collections.max(list));
+			avg += benefits[idx];
 			benefits[idx] = 0.0; // don't consider this share any longer in this loop
 			// shares will be split equally
 			int volume = (int)(budget.doubleValue() * share / prices[idx].price.doubleValue()); 
@@ -527,9 +578,12 @@ public class StockSimulator {
 					   	+ "</TD></TR>\n");
 			total = total.add(prices[idx].price.multiply(new BigDecimal(volume)));
 		}
+		avg /= max_shares;
+// Figure 3 & 4
+//System.out.println(avg);		
 		bw.write("</table>\n");
 		bw.write("Portfolio value: " + String.format("%.2f", total) + "<BR>");
-		bw.write("In the wallet after stock purchase: " 
+		bw.write("Cash after stock purchase: " 
 				+ String.format("%.2f", budget.subtract(total).doubleValue()) + "<BR>");
 		bw.flush();
 		return new PortfolioWithWallet(budget.subtract(total), portfolio, total);
@@ -549,11 +603,11 @@ public class StockSimulator {
 			   String line = br.readLine();
 			    
 			   if (i >= size) {
-				   if (line == null || line.strip().length()<1) break; // last line
+				   if (line == null || line.trim().length()<1) break; // last line
 				   System.out.println("solver returned more lines than expected number of variables");
 				   System.exit(0);
 			   }
-			   if (line == null || line.strip().length()<1) {
+			   if (line == null || line.trim().length()<1) {
 				   System.out.println("solver returned an empty line");
 				   System.exit(0);
 			   }
@@ -580,24 +634,29 @@ public class StockSimulator {
 			System.exit(0);
 			return null;
 		}
+// Table 3.
 //System.out.println(asset_count); // number of assets in portfolio
 		bw.write("</table>\n");
 		bw.write("Portfolio value: " + String.format("%.2f", total) + "<BR>");
-		bw.write("In the wallet after stock purchase: " + String.format("%.2f", budget.subtract(total)) + "<BR>");
+		bw.write("Cash after stock purchase: " + String.format("%.2f", budget.subtract(total)) + "<BR>");
 		bw.flush();
 		return new PortfolioWithWallet(budget.subtract(total), portfolio, total);
 	}
 	
 	private static BigDecimal showPortfolio(List<StockInPortfolio> portfolio, LocalDate dateFrom, 
 											LocalDate dateTo, BufferedWriter bw) throws IOException {
-		bw.write("Portfolio rebuild on: "+ dateTo +"<BR>\nCurrent value before rebuild:<table border=1>");
-		bw.write("<TR><TH>Stock</TH><TH> Vol. </TH><TH> Price </TH><TH> Total </TH><TH>Dividend</TH><TH> Dividend - details </TH></TR>\n");
+		bw.write("Portfolio rebuild on: "); /*dateTo*/ 
+		bw.write(portfolio == null || portfolio.size() == 0 ? ""+dateTo : ""+findDateForDate(portfolio.get(0), dateTo) 
+											+"<BR>\nPortfolio before rebuild:<table border=1>");
+		bw.write("<TR><TH>Stock</TH><TH> Vol. </TH><TH> Price </TH><TH> Total </TH><TH>Dividend</TH><TH> Some more details </TH></TR>\n");
 //		BigDecimal divid_paid_total= new BigDecimal(0);
 		BigDecimal total_price = new BigDecimal(0);
 		BigDecimal total_divid = new BigDecimal(0);
+		double avg=0; // for one of charts in the article - actual dividend yield achieved, not forecasted by a mean
 		for (StockInPortfolio stock: portfolio) {
 			// finding the price for today or "yesterday"
 			BigDecimal price = findPriceForDate(stock, dateTo);
+			double firstPrice = findPriceForDate(stock, dateFrom).doubleValue(); // for dividend yield, se above
 			if (price == null) 
 				System.out.println("Error: a price for date not found");
 			DividentWithComment dividends = findDividendsPaid(stock, dateFrom, dateTo);
@@ -612,10 +671,15 @@ public class StockSimulator {
 		    		+ (splitRatio.doubleValue() != 1.0 ? "SPLIT(s)" : "") + "</td></TR>\n");
 		    total_price = total_price.add(price.multiply(new BigDecimal(stock.number)));
 		    total_divid = total_divid.add(dividends.dividend); 
+		    avg += dividends.dividend.doubleValue() / (firstPrice*stock.number);
 		}
+		avg /= portfolio.size();
+//System.out.println(Math.pow(1.0+avg, 4)-1.0);
+// if you would like to know the total of paid dividends
+//System.out.println(total_divid); // dateTo + ": "+ 
 		bw.write("</table>");
 		bw.write("Value of stock sold: " + String.format("%.2f", total_price) + "<BR>\n");
-		bw.write("Value of dividend paid: " + String.format("%.2f", total_divid) + "<BR>\n");
+		bw.write("Total dividends paid: " + String.format("%.2f", total_divid) + "<BR>\n");
 		return total_price.add(total_divid);
 	}
 	
@@ -624,6 +688,15 @@ public class StockSimulator {
 		for (Close quote: historicPrices) {
 			if (quote.date.isBefore(dateTo) || quote.date.isEqual(dateTo)) 
 				return quote.price;
+		}
+		return null;
+	}
+	
+	private static LocalDate findDateForDate(StockInPortfolio stock, LocalDate dateTo) {
+		List<Close> historicPrices = prices.get(stock.ticker);
+		for (Close quote: historicPrices) {
+			if (quote.date.isBefore(dateTo) || quote.date.isEqual(dateTo)) 
+				return quote.date;
 		}
 		return null;
 	}
@@ -659,20 +732,9 @@ public class StockSimulator {
 		List<Close> hist = new ArrayList<Close>();
 		try (BufferedReader br = new BufferedReader(new FileReader(ROOT_DIR + "data/"+ ticker + suffix))) {
 			br.readLine(); // ignoring the header line
-			//double  next_val=1000000;
-			//String next_date = null;
 			while (br.ready()) {
-				
 				String[] values = br.readLine().split(",");
 				hist.add(new Close(values[0], values[idx]));
-			/*	if (suffix.equals("-prc")) {
-				   double prev_val = new Double(values[4]);
-				   if (next_val < prev_val*0.8) 
-					   System.out.println(ticker + "," + next_date + "," + (prev_val/next_val));
-				}
-				next_val = new Double(values[1]); // next value (smaller) appears earlier in the file; 1 = "open"
-				next_date = values[0];
-				*/
 			}
 		}
 		catch (IOException ioe) {
@@ -680,7 +742,10 @@ public class StockSimulator {
 			System.exit(0);
 			return null;
 		}
-		return hist;
+		// we don't know the order of history in the input file
+		Close[] arr = hist.toArray(new Close[hist.size()]); 
+		Arrays.sort(arr);
+		return Arrays.asList(arr);
 	}
 	
 	private static void readSplits(String fileName) {
