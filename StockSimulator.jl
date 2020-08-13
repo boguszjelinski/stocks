@@ -8,43 +8,11 @@ using Ipopt
 
 path = string("C:\\cygwin64\\home\\dell\\DIVID\\")
 sp100 = string(path , "GIT\\tiingo\\SP100.txt")
-
-function findFirstQuote(dateFrom, data)
-    pastExists = 0
-    for (index, value) in enumerate(data)
-        dt = Date(SubString(value["date"], 1, 10))
-        if pastExists == 0 && dt <= dateFrom
-            pastExists = 1
-        end
-        if dt > dateFrom # > means skip "==dateFrom"
-            if pastExists == 1
-                return index
-            end
-            return -1
-            break
-        end
-    end   
-    return -1
-end
-
-function findLastQuote(dateTo, data)
-    for (index, value) in enumerate(data)
-        dt = SubString(value["date"], 1, 10)
-        if Date(dt) >= dateTo # (from, to>
-            return index
-            break
-        end
-    end   
-    return -1
-end
-
-function sumDivid(idxFrom, idxTo, data)
-    sum = 0.0
-    for i = idxFrom:idxTo
-        sum += data[i]["divCash"]
-    end
-    return sum
-end
+history_periods_number = 12 # in sample
+history_period_length = 3
+periods_number = 4 
+period_length = 3
+budget = 1000.0
 
 function readHistory(tickers)
     quotes = Dict()
@@ -60,6 +28,48 @@ function readHistory(tickers)
     return quotes
 end
 
+SP100symbols = readdlm(sp100, '\t', String, '\n')  
+data = readHistory(SP100symbols)
+
+function findFirstQuote(dateFrom, symbol)
+    pastExists = 0
+    for (index, value) in enumerate(data[symbol])
+        dt = Date(SubString(value["date"], 1, 10))
+        if pastExists == 0 && dt <= dateFrom
+            pastExists = 1
+        end
+        if dt > dateFrom # > means skip "==dateFrom"
+            if pastExists == 1
+                return index
+            end
+            return -1
+            break
+        end
+    end   
+    return -1
+end
+
+function findLastQuote(dateTo, symbol)
+    for (index, value) in enumerate(data[symbol])
+        dt = SubString(value["date"], 1, 10)
+        if Date(dt) >= dateTo # (from, to>
+            return index
+            break
+        end
+    end   
+    return -1
+end
+
+function sumDivid(idxFrom, idxTo, symbol)
+    sum = 0.0
+    for i = idxFrom:idxTo
+        sum += data[symbol][i]["divCash"]
+    end
+    return sum
+end
+
+
+
 function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, tickers)
     fromDate = startDate - Dates.Month(numb_of_periods * numb_of_months)
     benef = []
@@ -70,14 +80,14 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
         end
         benefits = Float16[]
         for p = 1:numb_of_periods
-            first = findFirstQuote(fromDate + Dates.Month((p-1)*numb_of_months), quotes[t])
-            last = findLastQuote(fromDate + Dates.Month(p*numb_of_months), quotes[t])
+            first = findFirstQuote(fromDate + Dates.Month((p-1)*numb_of_months), t)
+            last = findLastQuote(fromDate + Dates.Month(p*numb_of_months), t)
             if first <1 || last < 1
                 break # this ticker will not be put to solver
             end
             quote1 = quotes[t][first]
             quote2 = quotes[t][last]
-            push!(benefits, (quote2["close"] - quote1["close"] + sumDivid(first, last, quotes[t])) / quote1["close"]) # add dividends
+            push!(benefits, (quote2["close"] - quote1["close"] + sumDivid(first, last, t)) / quote1["close"]) # add dividends
         end
         if length(benefits) == numb_of_periods # data for this ticker covers all periods
             push!(benef, benefits)
@@ -115,16 +125,6 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
 
     return result
 end
-
-
-history_periods_number = 12 # in sample
-history_period_length = 3
-periods_number = 4 
-period_length = 3
-
-
-SP100symbols = readdlm(sp100, '\t', String, '\n')  
-data = readHistory(SP100symbols)
 
 startDate = Date("2000-01-01")
 for i = 1:periods_number
