@@ -10,9 +10,8 @@ path = string("C:\\cygwin64\\home\\dell\\DIVID\\")
 sp100 = string(path , "GIT\\tiingo\\SP100.txt")
 history_periods_number = 12 # in sample
 history_period_length = 3
-periods_number = 4 
+periods_number = 1
 period_length = 3
-budget = 1000.0
 
 function readHistory(tickers)
     quotes = Dict()
@@ -68,8 +67,6 @@ function sumDivid(idxFrom, idxTo, symbol)
     return sum
 end
 
-
-
 function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, tickers)
     fromDate = startDate - Dates.Month(numb_of_periods * numb_of_months)
     benef = []
@@ -107,7 +104,7 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
 
     max_risk = 0.003
     N = length(benef)
-    m = Model(with_optimizer(Ipopt.Optimizer))
+    m = Model(with_optimizer(Ipopt.Optimizer, print_level=0))
     @variable(m, 0 <= x[i=1:N] <= 1)
     @objective(m,Max,sum(x[i] * Mean[i] for i = 1:N))
     @constraint(m, sum(x[j] * sum(x[i] * C[i,j] for i = 1:N) for j = 1:N) <= max_risk) 
@@ -126,9 +123,50 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
     return result
 end
 
-startDate = Date("2000-01-01")
-for i = 1:periods_number
-    date = startDate + Dates.Month((i-1)*period_length)
-    print(findNewPortfolio(date, history_periods_number, history_period_length, data, SP100symbols))
+function sellPortfolio(port, date)
+    cash = 0.0
+    for (index, value) in enumerate(port)
+        sym, vol = value
+        idx = findLastQuote(date, sym)
+        price = data[sym][idx]["close"]
+        cash += price * vol
+        print("($sym, $vol, $price)")
+    end
+    println("\nSold for: $cash\n----------------------------------------")
+    return cash
 end
 
+function buyPortfolio(shares, budget, date)
+    port = []
+    left = budget
+    for (index, value) in enumerate(shares)
+        sym, weight = value
+        idx = findLastQuote(date, sym)
+        price = data[sym][idx]["close"]
+        b = budget * weight
+        vol = floor(b / price)
+        if vol > 0
+            push!(port, (sym, vol))
+            left -= vol * price
+            print("($sym, $vol, $price)")
+        end
+    end
+    println("\nBought for: $(budget-left)\n")
+    return port, left
+end
+
+startDate = Date("2000-01-01")
+portfolio = [] # empty
+wallet = 1000
+
+for i = 1:2 #periods_number
+    global wallet
+    global portfolio
+    println("========================================================")
+    date = startDate + Dates.Month((i-1)*period_length)
+    wallet += sellPortfolio(portfolio, date)
+    newStocks = findNewPortfolio(date, history_periods_number, history_period_length, data, SP100symbols)
+    portfolio, left = buyPortfolio(newStocks, wallet, date)
+    wallet = left
+    println("\nWallet: $wallet")
+end
