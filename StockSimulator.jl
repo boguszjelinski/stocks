@@ -1,7 +1,6 @@
 using JSON
 using DelimitedFiles
 using Dates
-
 using StatsBase
 using JuMP
 using Ipopt
@@ -10,7 +9,7 @@ path = string("C:\\cygwin64\\home\\dell\\DIVID\\")
 sp100 = string(path , "GIT\\tiingo\\SP100.txt")
 history_periods_number = 12 # in sample
 history_period_length = 3
-periods_number = 1
+periods_number = 64
 period_length = 3
 
 function readHistory(tickers)
@@ -132,8 +131,37 @@ function sellPortfolio(port, date)
         cash += price * vol
         print("($sym, $vol, $price)")
     end
-    println("\nSold for: $cash\n----------------------------------------")
+    println("\nSold for: $(round(cash, digits=2))\n----------------------------------------")
     return cash
+end
+
+function sumUpDividendsAndSplits(sym, dateFrom, dateTo)
+    i1 = findFirstQuote(dateFrom, sym)
+    i2 = findLastQuote(dateTo, sym)
+    div = 0.0
+    split = 1.0
+    for i = i1:i2
+        div += data[sym][i]["divCash"]
+        split *= data[sym][i]["splitFactor"]
+    end
+    return div, split
+end
+
+function paidDividends(portf, dateFrom, dateTo)
+    cash = 0.0
+    for (index, value) in enumerate(portf)
+        sym, vol = value
+        div, split = sumUpDividendsAndSplits(sym, dateFrom, dateTo)
+        if split != 1.0
+            println(" Split: $sym by $split")
+            vol *= split
+            portf[index] = (sym, vol)
+        end
+        cash += div * vol  # TODO: the volume corrected by split might concern dividend paid before split - total will be higher/wrong
+        print("($sym, $(div * vol))")
+    end
+    println("\nDividends paid: $(round(cash, digits=2))")
+    return cash, portf
 end
 
 function buyPortfolio(shares, budget, date)
@@ -151,22 +179,27 @@ function buyPortfolio(shares, budget, date)
             print("($sym, $vol, $price)")
         end
     end
-    println("\nBought for: $(budget-left)\n")
+    println("\nBought for: $(round((budget-left), digits=2))")
     return port, left
 end
 
 startDate = Date("2000-01-01")
 portfolio = [] # empty
-wallet = 1000
-
-for i = 1:2 #periods_number
+wallet = 100000
+date = Date("3000-01-01")
+for i = 1:periods_number
     global wallet
     global portfolio
+    global date # so that it doesn't fail in runtime  with prevDate
     println("========================================================")
+    prevDate = date
     date = startDate + Dates.Month((i-1)*period_length)
+    println("Rebuild on $date")
+    div, portfolio = paidDividends(portfolio, prevDate, date)
+    wallet += div
     wallet += sellPortfolio(portfolio, date)
     newStocks = findNewPortfolio(date, history_periods_number, history_period_length, data, SP100symbols)
     portfolio, left = buyPortfolio(newStocks, wallet, date)
     wallet = left
-    println("\nWallet: $wallet")
+    println("Wallet: $(round(wallet, digits=2))")
 end
