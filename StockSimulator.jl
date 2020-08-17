@@ -12,6 +12,13 @@ history_period_length = 3
 periods_number = 64
 period_length = 3
 
+if length(ARGS) == 4
+    history_periods_number = ARGS[1]
+    history_period_length = ARGS[2]
+    periods_number = ARGS[3]
+    period_length = ARGS[4]
+end
+
 function readHistory(tickers)
     quotes = Dict()
     for t in tickers
@@ -49,10 +56,12 @@ end
 
 function findLastQuote(dateTo, symbol)
     for (index, value) in enumerate(data[symbol])
-        dt = SubString(value["date"], 1, 10)
-        if Date(dt) >= dateTo # (from, to>
+        dt = Date(SubString(value["date"], 1, 10))
+        if dt >= dateTo # (from, to>
+            if dt > dateTo
+                return index-1
+            end
             return index
-            break
         end
     end   
     return -1
@@ -176,7 +185,7 @@ function buyPortfolio(shares, budget, date)
         if vol > 0
             push!(port, (sym, vol))
             left -= vol * price
-            print("($sym, $vol, $price)")
+            print("($sym, $(round(weight*100,digits=1))% $vol, $price)")
         end
     end
     println("\nBought for: $(round((budget-left), digits=2))")
@@ -187,6 +196,7 @@ startDate = Date("2000-01-01")
 portfolio = [] # empty
 wallet = 100000
 date = Date("3000-01-01")
+
 for i = 1:periods_number
     global wallet
     global portfolio
