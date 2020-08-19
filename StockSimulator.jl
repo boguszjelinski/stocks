@@ -8,16 +8,24 @@ using Ipopt
 path = string("C:\\cygwin64\\home\\dell\\DIVID\\")
 sp100 = string(path , "GIT\\tiingo\\SP100.txt")
 history_periods_number = 12 # in sample
-history_period_length = 3
-periods_number = 64
-period_length = 3
+history_period_length = 1
+periods_number = 192
+period_length = 1
+max_risk = 0.003
 
-if length(ARGS) == 4
-    history_periods_number = ARGS[1]
-    history_period_length = ARGS[2]
-    periods_number = ARGS[3]
-    period_length = ARGS[4]
+if length(ARGS) == 5
+    history_periods_number = parse(Int64, ARGS[1])
+    history_period_length = parse(Int64, ARGS[2])
+    periods_number = parse(Int64, ARGS[3])
+    period_length = parse(Int64, ARGS[4])
+    max_risk = parse(Float64, ARGS[5])
 end
+
+println(history_periods_number)
+println(history_period_length)
+println(periods_number)
+println(period_length)
+println(max_risk)
 
 function readHistory(tickers)
     quotes = Dict()
@@ -110,7 +118,7 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
     
     # see also https://github.com/mateuszbaran/CovarianceEstimation.jl
 
-    max_risk = 0.003
+    
     N = length(benef)
     m = Model(with_optimizer(Ipopt.Optimizer, print_level=0))
     @variable(m, 0 <= x[i=1:N] <= 1)
@@ -185,7 +193,7 @@ function buyPortfolio(shares, budget, date)
         if vol > 0
             push!(port, (sym, vol))
             left -= vol * price
-            print("($sym, $(round(weight*100,digits=1))% $vol, $price)")
+            print("($sym, $(round(weight*100,digits=1))%, $vol, $price)")
         end
     end
     println("\nBought for: $(round((budget-left), digits=2))")
