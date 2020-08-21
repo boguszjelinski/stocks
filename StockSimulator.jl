@@ -83,6 +83,37 @@ function sumDivid(idxFrom, idxTo, symbol)
     return sum
 end
 
+function solve(n_periods, returns, tickrs)
+    obs = zeros(n_periods, length(returns))
+    for k = 1:length(returns)
+        for l = 1: n_periods
+            obs[l,k] = returns[k][l]
+        end
+    end
+    Mean, C = mean_and_cov(obs)
+    
+    # see also https://github.com/mateuszbaran/CovarianceEstimation.jl
+
+    N = length(returns)
+    m = Model(with_optimizer(Ipopt.Optimizer, print_level=0))
+    @variable(m, 0 <= x[i=1:N] <= 1)
+    @objective(m,Max,sum(x[i] * Mean[i] for i = 1:N))
+    @constraint(m, sum(x[j] * sum(x[i] * C[i,j] for i = 1:N) for j = 1:N) <= max_risk) 
+    @constraint(m, sum(x[i] for i = 1:N) ==1.0)
+
+    # redirect_stdout((()->optimize!(model)),open("/dev/null", "w")) do
+    status = optimize!(m)
+
+    result = []
+    for k= 1:N 
+        if (getvalue(x[k])>0.01)
+            push!(result,(tickrs[k],getvalue(x[k])))
+        end
+    end 
+
+    return result
+end
+
 function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, tickers)
     fromDate = startDate - Dates.Month(numb_of_periods * numb_of_months)
     benef = []
@@ -108,35 +139,7 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
         end
     end
 
-    obs = zeros(numb_of_periods, length(benef))
-    for k = 1:length(benef)
-        for l = 1: numb_of_periods
-            obs[l,k] = benef[k][l]
-        end
-    end
-    Mean, C = mean_and_cov(obs)
-    
-    # see also https://github.com/mateuszbaran/CovarianceEstimation.jl
-
-    
-    N = length(benef)
-    m = Model(with_optimizer(Ipopt.Optimizer, print_level=0))
-    @variable(m, 0 <= x[i=1:N] <= 1)
-    @objective(m,Max,sum(x[i] * Mean[i] for i = 1:N))
-    @constraint(m, sum(x[j] * sum(x[i] * C[i,j] for i = 1:N) for j = 1:N) <= max_risk) 
-    @constraint(m, sum(x[i] for i = 1:N) ==1.0)
-
-    # redirect_stdout((()->optimize!(model)),open("/dev/null", "w")) do
-    status = optimize!(m)
-
-    result = []
-    for k= 1:N 
-        if (getvalue(x[k])>0.01)
-            push!(result,(symbols[k],getvalue(x[k])))
-        end
-    end 
-
-    return result
+    return solve(numb_of_periods, benef, symbols)
 end
 
 function sellPortfolio(port, date)
