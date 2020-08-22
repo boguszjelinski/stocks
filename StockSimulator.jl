@@ -9,9 +9,10 @@ path = string("C:\\cygwin64\\home\\dell\\DIVID\\")
 sp100 = string(path , "GIT\\tiingo\\SP100.txt")
 history_periods_number = 12 # in sample
 history_period_length = 1
-periods_number = 192
+periods_number = 1 #192
 period_length = 1
 max_risk = 0.003
+strategy = "DIV"
 
 if length(ARGS) == 5
     history_periods_number = parse(Int64, ARGS[1])
@@ -19,6 +20,7 @@ if length(ARGS) == 5
     periods_number = parse(Int64, ARGS[3])
     period_length = parse(Int64, ARGS[4])
     max_risk = parse(Float64, ARGS[5])
+    strategy = ARGS[6]
 end
 
 println(history_periods_number)
@@ -26,6 +28,7 @@ println(history_period_length)
 println(periods_number)
 println(period_length)
 println(max_risk)
+println(strategy)
 
 function readHistory(tickers)
     quotes = Dict()
@@ -114,7 +117,24 @@ function solve(n_periods, returns, tickrs)
     return result
 end
 
-function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, tickers)
+function solveDiv(returns, tickrs)
+    means = []
+    # what was the mean value of dividend ratio troughout history
+    for i = 1:length(tickrs)
+        push!(means, (mean(returns[i]), tickrs[i]))
+    end
+    # now get the best ones
+    sorted = sort(means, rev=true)
+    ret = []
+    stocks_in_portfolio = 4
+    for i= 1:stocks_in_portfolio
+        (val, t) = sorted[i]
+        push!(ret, (t, 1/stocks_in_portfolio))
+    end
+    return ret
+end
+
+function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, tickers, method)
     fromDate = startDate - Dates.Month(numb_of_periods * numb_of_months)
     benef = []
     symbols = []
@@ -131,15 +151,22 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
             end
             quote1 = quotes[t][first]
             quote2 = quotes[t][last]
-            push!(benefits, (quote2["close"] - quote1["close"] + sumDivid(first, last, t)) / quote1["close"]) # add dividends
+            if method == "MPT"
+                push!(benefits, (quote2["close"] - quote1["close"] + sumDivid(first, last, t)) / quote1["close"]) 
+            else    # DIV
+                push!(benefits, sumDivid(first, last, t) / quote1["close"]) 
+            end
         end
         if length(benefits) == numb_of_periods # data for this ticker covers all periods
             push!(benef, benefits)
             push!(symbols, t)
         end
     end
-
-    return solve(numb_of_periods, benef, symbols)
+    if method == "MPT"
+        return solve(numb_of_periods, benef, symbols)
+    else
+        return solveDiv(benef, symbols)
+    end
 end
 
 function sellPortfolio(port, date)
@@ -219,7 +246,7 @@ for i = 1:periods_number
     div, portfolio = paidDividends(portfolio, prevDate, date)
     wallet += div
     wallet += sellPortfolio(portfolio, date)
-    newStocks = findNewPortfolio(date, history_periods_number, history_period_length, data, SP100symbols)
+    newStocks = findNewPortfolio(date, history_periods_number, history_period_length, data, SP100symbols, strategy)
     portfolio, left = buyPortfolio(newStocks, wallet, date)
     wallet = left
     println("Wallet: $(round(wallet, digits=2))")
