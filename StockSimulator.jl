@@ -9,11 +9,11 @@ println("START: $(Dates.format(now(), "HH:MM:SS"))")
 path = string("C:\\cygwin64\\home\\dell\\DIVID\\")
 sp100 = string(path , "GIT\\tiingo\\SP100.txt")
 history_periods_number = 12 # in sample
-history_period_length = 1
-periods_number = 192
-period_length = 1
+history_period_length = 3
+periods_number = 64
+period_length = 3
 max_risk = 0.003
-strategy = "MPT"
+strategy = "DIV"
 
 if length(ARGS) == 6
     history_periods_number = parse(Int64, ARGS[1])
