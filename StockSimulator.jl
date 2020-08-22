@@ -5,16 +5,17 @@ using StatsBase
 using JuMP
 using Ipopt
 
+println("START: $(Dates.format(now(), "HH:MM:SS"))")
 path = string("C:\\cygwin64\\home\\dell\\DIVID\\")
 sp100 = string(path , "GIT\\tiingo\\SP100.txt")
 history_periods_number = 12 # in sample
 history_period_length = 1
-periods_number = 1 #192
+periods_number = 192
 period_length = 1
 max_risk = 0.003
-strategy = "DIV"
+strategy = "MPT"
 
-if length(ARGS) == 5
+if length(ARGS) == 6
     history_periods_number = parse(Int64, ARGS[1])
     history_period_length = parse(Int64, ARGS[2])
     periods_number = parse(Int64, ARGS[3])
@@ -187,9 +188,20 @@ function sumUpDividendsAndSplits(sym, dateFrom, dateTo)
     i2 = findLastQuote(dateTo, sym)
     div = 0.0
     split = 1.0
+    div_before = 0 # dividend paid before split means that dividend will be counted wrongly (here we sum up "by share")
+    err = 0
     for i = i1:i2
+        if div_before==0 && # do we have to check more?
+             div > 0.0 && # the sum of previous rows is positive - the dividend was paid before
+             data[sym][i]["splitFactor"] != 1.0 # and now there is a split
+            div_before = 1 # which means you shold not multiply volume (what we do outside this func)
+            println("<dividend paid before split: $sym, dateFrom: $dateFrom>")
+        end
         div += data[sym][i]["divCash"]
         split *= data[sym][i]["splitFactor"]
+    end
+    if div_before == 1
+        div /= split # we have to correct the value (it will be wrongly multiplied by volume later)
     end
     return div, split
 end
@@ -251,3 +263,4 @@ for i = 1:periods_number
     wallet = left
     println("Wallet: $(round(wallet, digits=2))")
 end
+println("STOP: $(Dates.format(now(), "HH:MM:SS"))")
