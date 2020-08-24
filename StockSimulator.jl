@@ -154,7 +154,7 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
             quote2 = quotes[t][last]
             if method == "MPT"
                 push!(benefits, (quote2["close"] - quote1["close"] + sumDivid(first, last, t)) / quote1["close"]) 
-            else    # DIV
+            else    # any DIV
                 push!(benefits, sumDivid(first, last, t) / quote1["close"]) 
             end
         end
@@ -164,6 +164,8 @@ function findNewPortfolio(startDate, numb_of_periods, numb_of_months, quotes, ti
         end
     end
     if method == "MPT"
+        return solve(numb_of_periods, benef, symbols)
+    elseif method == "DIVOPT"
         return solve(numb_of_periods, benef, symbols)
     else
         return solveDiv(benef, symbols)

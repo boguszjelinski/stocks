@@ -333,9 +333,12 @@ public class StockSimulator {
 			runOsCmd("python " + cmd);
 		}
 		else { // MAXIMIZE
-			String cmd = ROOT_DIR + "solver-"+ ident +".jl";
+			/*String cmd = ROOT_DIR + "solver-"+ ident +".jl";
 			constructJuliaTask(cov, mean, min_r, cmd, outFile);
-			runJulia(JULIA_CMD + " "+ cmd + " >> julia.out 2>>nul");
+			runJulia(JULIA_CMD + " "+ cmd + " >> julia.out 2>>nul");*/
+			String cmd = ROOT_DIR + "solver-"+ ident +".py";
+			constructPythonTaskMax(cov, mean, min_r, cmd, outFile);
+			runOsCmd("python " + cmd);
 		}
 		return createPortfolioFromSolver(budget, idx, goodTickers, lastPrice, bw, outFile);
 	}
@@ -401,7 +404,43 @@ public class StockSimulator {
         fw.write("        f.write(\"%s\\n\" % item)\n");
         fw.close();
 	}
-	
+
+	private static void constructPythonTaskMax(double[][] cov, double[] mean, double max_risk, String cmd, String out) throws IOException {
+		FileWriter fw = new FileWriter(cmd);
+		fw.write("from cvxpy import *\n");
+		fw.write("import pyscipopt.scip as scip\n");
+		fw.write("import numpy as np\n");
+		fw.write("x = Variable("+ cov.length +")\n");
+		fw.write("Cov = [");
+		for (int i =0; i<cov.length; i++) {
+			fw.write("[");
+			for (int j =0; j<cov.length; j++) {
+				fw.write(""+cov[i][j]);
+				if (j<cov.length-1) fw.write(",");
+			}
+			fw.write("]");
+			if (i<cov.length-1) fw.write(",");
+			fw.write("\n");
+		}
+		fw.write("]\n");
+		fw.write("Mean = [");
+		for (int i=0; i<mean.length; i++) {
+			fw.write(""+mean[i]);
+			if (i<mean.length-1) fw.write(",");
+		}
+		fw.write("]\n");
+		fw.write("risk = quad_form(x, Cov)\n");
+		fw.write("mu = np.asarray(Mean)\n");
+		fw.write("ret = mu.T@x\n");
+		fw.write("constraints = [sum(x) <= 1.0, x>=0, risk<="+ max_risk +"]\n");
+		fw.write("Problem(Maximize(ret), constraints).solve(solver=SCS)\n");
+
+		fw.write("with open(\""+ out +"\", \"w\") as f:\n");
+		fw.write("    for i in range("+ cov.length +"):\n");
+		fw.write("        f.write(\"%s\\n\" % x.value[i])\n");
+		fw.close();
+	}
+
 	private static void constructJuliaTask(double[][] cov, double[] mean, double min_reve, 
 											String fileName, String outFile) throws IOException {
 		FileWriter fw = new FileWriter(fileName);   
@@ -508,6 +547,11 @@ public class StockSimulator {
 				if (lastPrice == null || lastPrice.price == null || lastPrice.price.equals(0.0)
 						|| veryFirstPrice == null || veryFirstPrice.price.equals(0.0)) continue; // don't consider this share
 				if (StatUtils.variance(dividends) > max_risk) continue; // a too risky stock
+				/*
+				if (!div_was_paid_year_ago(startDate, period_length, periods_number, historicDividends)) // in_analogous_period
+					continue; // we are looking for shares which are probable to give dividend in that period (month?)
+				*/
+
 				// one of alternative strategies - applying the distance to the next dividend payment
 				// finding the date
 				/*
@@ -557,7 +601,23 @@ public class StockSimulator {
 			return createPortfolioFromSolver(budget, idx, goodTickers, lastClose, bw, outFile);
 		}
 	}
-	
+
+	private static boolean div_was_paid_year_ago(LocalDate startDateOfRiskAssessment, int period_length,
+												 int periods_number, List<Close> historicDividends) {
+		int months = periods_number * period_length;
+		LocalDate fromDate   = startDateOfRiskAssessment.plusMonths(months - 12); // year ago
+		LocalDate toDate   = startDateOfRiskAssessment.plusMonths(months - 12 + period_length);
+
+		List<Close> historicDividendsTemp = historicDividends.stream()
+				.filter(p -> (p.date.isAfter(fromDate) && (p.date.isBefore(toDate) || p.date.isEqual(toDate))))
+				.collect(Collectors.toList());
+
+		if (historicDividendsTemp != null && historicDividendsTemp.size()>0) {
+			return true;
+		}
+		return false;
+	}
+
 	// create a 1/N portfolio based on dividend yields
 	private static PortfolioWithWallet createSimplePortfolio(int max_shares, double[] benefits, BigDecimal budget, 
 					String[] goodTickers, Close[] prices, BufferedWriter bw) throws IOException {
@@ -663,7 +723,9 @@ public class StockSimulator {
 				System.out.println("Error: a price for date not found");
 			DividentWithComment dividends = findDividendsPaid(stock, dateFrom, dateTo);
 			BigDecimal splitRatio = checkSplits(stock.ticker, dateFrom, dateTo);
-			
+			if (splitRatio.doubleValue() != 1.0 && dividends.dividend.doubleValue()>0.0) {
+				bw.write("<SPLIT_DIV_ERR, stock: " + stock.ticker + ", dateFrom: " + dateFrom.toString() + ">");
+			}
 			stock.number *= splitRatio.doubleValue();
 //			divid_paid_total = divid_paid_total.add(dividends.dividend);
 			
