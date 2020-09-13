@@ -1,5 +1,6 @@
 import json
 import os 
+import sys
 from datetime import date, datetime, timedelta
 import dateutil.relativedelta
 from cvxpy import *
@@ -11,6 +12,21 @@ history_period_length = 3
 periods_number = 64
 period_length = 3
 max_risk = 0.003
+
+if len(sys.argv) == 5: 
+    for i, arg in enumerate(sys.argv):
+        if arg == "-period_length":
+            period_length = int(sys.argv[i+1])
+            history_period_length = period_length
+            periods_number = int(16*12 / period_length)
+        if arg == "-max_risk":
+            max_risk = float(sys.argv[i+1])
+
+print("history_periods_number: ", history_periods_number)
+print("history_period_length:", history_period_length)
+print("periods_number", periods_number)
+print("period_length:", period_length)
+print("max_risk: ", max_risk)
 
 print("START: ", datetime.now())
 sp100 = "C:\\home\\dell\\DIVID\\GIT\\tiingo\\SP100.txt"
@@ -134,7 +150,7 @@ def sumUpDividendsAndSplits(sym, dateFrom, dateTo):
                             div > 0.0 and # the sum of previous rows is positive - the dividend was paid before
                             data[sym][i]["splitFactor"] != 1.0): # and now there is a split
             div_before = True # which means you shold not multiply volume (what we do outside this func)
-            print("<dividend paid before split: $sym, dateFrom: $dateFrom>")
+            print("<dividend paid before split: ", sym, "dateFrom: ", dateFrom, ">")
         div += data[sym][i]["divCash"]
         split *= data[sym][i]["splitFactor"]
     if div_before:
@@ -151,7 +167,7 @@ def paidDividends(portf, dateFrom, dateTo):
             vol *= split
             portf[sym] = vol
         cash += div * vol  # TODO: the volume corrected by split might concern dividend paid before split - total will be higher/wrong
-        print('(', sym, ',', div * vol, ')')
+        print('(', sym, ',', round(div * vol, 2), ')')
     print("Dividends paid: ", round(cash, 2))
     return cash, portf
 
