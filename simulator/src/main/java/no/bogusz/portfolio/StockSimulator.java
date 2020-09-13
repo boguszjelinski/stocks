@@ -137,6 +137,7 @@ public class StockSimulator {
 		public BigDecimal portfolio_value;
 	}
 	
+	// mvn exec:java -D"exec.mainClass"="no.bogusz.portfolio.StockSimulator"
 	public static void main(String[] args) throws IOException {
 
 		tickers = readShareSymbols(SHARE_NAMES);
@@ -152,7 +153,7 @@ public class StockSimulator {
 		}
 		readSplits("splits.txt");
 		
-		double[] risks = new double[]{0.003}; // , 0.005, 0.015, 0.075, 0.375
+		double[] risks = new double[]{0.003, 0.005, 0.015, 0.075, 0.375}; // , 0.005, 0.015, 0.075, 0.375
 		int[] period_length = new int[]{3}; // 1,3,6,12
 		int[] benef_period_length = new int[]{3}; //,6,9,12};
 		int[] benef_periods = new int[]{12}; //{6,12,18,24};
@@ -335,7 +336,8 @@ public class StockSimulator {
 		else { // MAXIMIZE
 			/*String cmd = ROOT_DIR + "solver-"+ ident +".jl";
 			constructJuliaTask(cov, mean, min_r, cmd, outFile);
-			runJulia(JULIA_CMD + " "+ cmd + " >> julia.out 2>>nul");*/
+			runJulia(JULIA_CMD + " "+ cmd + " >> julia.out 2>>nul");
+			*/
 			String cmd = ROOT_DIR + "solver-"+ ident +".py";
 			constructPythonTaskMax(cov, mean, min_r, cmd, outFile);
 			runOsCmd("python " + cmd);
