@@ -12,8 +12,9 @@ history_period_length = 3
 periods_number = 64
 period_length = 3
 max_risk = 0.003
+strategy = 'MPT'
 
-if len(sys.argv) == 5: 
+if len(sys.argv) == 7: 
     for i, arg in enumerate(sys.argv):
         if arg == "-period_length":
             period_length = int(sys.argv[i+1])
@@ -21,6 +22,8 @@ if len(sys.argv) == 5:
             periods_number = int(16*12 / period_length)
         if arg == "-max_risk":
             max_risk = float(sys.argv[i+1])
+        if arg == "-strategy":
+            strategy = sys.argv[i+1]
 
 print("history_periods_number: ", history_periods_number)
 print("history_period_length:", history_period_length)
@@ -92,6 +95,25 @@ def solve(rets):
         weights[i] = x.value[i]
     return weights
 
+def solveDiv(benf):
+    means = {}
+    # what was the mean value of dividend ratio troughout history
+    for k in benf.keys():
+        means[k] = np.average(benf[k])
+    # now get the best ones
+    srtd = {k: v for k, v in sorted(means.items(), key=lambda item: item[1], reverse=True)}
+
+    stocks_in_portfolio = 4
+    x = [1/stocks_in_portfolio] * stocks_in_portfolio
+    syms = []
+    i=0
+    for k in srtd.keys():
+        if i == stocks_in_portfolio:
+            break
+        syms.append(k)
+        i = i + 1
+    return syms, x
+
 def findNewPortfolio(startDate, numb_of_periods, numb_of_months, method):
     fromDate = startDate - dateutil.relativedelta.relativedelta(months=numb_of_periods * numb_of_months)
     benef = {}
@@ -119,13 +141,10 @@ def findNewPortfolio(startDate, numb_of_periods, numb_of_months, method):
         b[i] = benef[k]
         i=i+1
 
-    if method == 'MPT':
+    if method == 'MPT' or method == 'DIVOPT':
         return symbols, solve(b)
-    # elif method == "DIVOPT":
-    #     return solve(numb_of_periods, benef, symbols)
-    # else:
-    #     return solveDiv(benef, symbols)
-    return benef
+    else: # DIV
+        return solveDiv(benef)
 
 def sellPortfolio(portf, date):
     cash = 0.0
@@ -194,7 +213,7 @@ startDate = date.fromisoformat('2000-01-01')
 portfolio = {} # empty
 wallet = 100000
 date = date.fromisoformat('2030-01-01')     # to skip some calculations at start
-strategy = 'MPT'
+
 
 for i in range (0, periods_number):
     print("========================================================")
