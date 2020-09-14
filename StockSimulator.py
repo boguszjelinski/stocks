@@ -33,7 +33,6 @@ print("max_risk: ", max_risk)
 
 print("START: ", datetime.now())
 sp100 = "C:\\home\\dell\\DIVID\\GIT\\tiingo\\SP100.txt"
-text_file = open(sp100, "r")
 tickers = open(sp100).read().split('\n')
 
 def readHistory():
