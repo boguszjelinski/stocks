@@ -24,7 +24,6 @@ for t in tickers:
     with open(path, 'r') as f:
         divids[t] = list(csv.reader(f, delimiter=','))
 
-
 for t in tickers:
     if len(t)<=0:
         continue
@@ -38,7 +37,25 @@ for t in tickers:
                 found = True
                 break
         if not found:
-            print("Not found, sym:", t, " date:", div[j][0])
+            print("Date not found for dividend, sym:", t, " date:", div[j][0])
+    quotes[t] = qts
+
+path = 'C:\\home\\dell\\DIVID\data\\splits.txt'
+with open(path, 'r') as f:
+    splits = list(csv.reader(f, delimiter=','))
+    for j in range(0,len(splits)): # 0: no header
+        qts = quotes[splits[j][0]]
+        # searching for the date
+        found = False
+        for i in range(1,len(qts)):
+            if qts[i][0] == splits[j][1]:
+                qts[i][2] = splits[j][2]
+                found = True
+                break
+        if not found:
+            print("Date not found for split, sym:", splits[j][0], " date:", splits[j][1])
+        else:
+            quotes[splits[j][0]] = qts
 
 for t in tickers:
     if len(t)<=0:
