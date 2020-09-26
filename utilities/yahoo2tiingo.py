@@ -1,13 +1,14 @@
 import csv
 
-sp100 = "C:\\home\\dell\\DIVID\\GIT\\tiingo\\SP100.txt"
+root = "C:\\home\\dell\\DIVID\\History\\"
+sp100 = root + "SP100.txt"
 tickers = open(sp100).read().split('\n')
 
 quotes = {}
 for t in tickers:
     if len(t)<=0:
         continue
-    path = 'C:\\home\\dell\\DIVID\data\\'+ t +'-prc'
+    path = root + 'data\\'+ t +'-prc'
     with open(path, 'r') as f:
         data = list(csv.reader(f, delimiter=','))
         # cleaning two colums for dividends and split
@@ -20,7 +21,7 @@ divids = {}
 for t in tickers:
     if len(t)<=0:
         continue
-    path = 'C:\\home\\dell\\DIVID\data\\'+ t +'-div'
+    path = root + 'data\\'+ t +'-div'
     with open(path, 'r') as f:
         divids[t] = list(csv.reader(f, delimiter=','))
 
@@ -40,7 +41,7 @@ for t in tickers:
             print("Date not found for dividend, sym:", t, " date:", div[j][0])
     quotes[t] = qts
 
-path = 'C:\\home\\dell\\DIVID\data\\splits.txt'
+path = root + 'data\\splits.txt'
 with open(path, 'r') as f:
     splits = list(csv.reader(f, delimiter=','))
     for j in range(0,len(splits)): # 0: no header
@@ -60,7 +61,7 @@ with open(path, 'r') as f:
 for t in tickers:
     if len(t)<=0:
         continue
-    path = 'C:\\home\\dell\\DIVID\yahoo2tiingo\\'+ t +'.json'
+    path = root + 'yahoo2tiingo\\'+ t +'.json'
     f = open(path, "w")
     f.write("[")
     qts = quotes[t]

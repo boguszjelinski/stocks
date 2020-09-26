@@ -37,7 +37,9 @@ import org.apache.commons.math3.stat.correlation.Covariance;
 public class StockSimulator {
 
 	private static final String ROOT_DIR = "/home/dell/DIVID/";
-	private static final String SHARE_NAMES = ROOT_DIR + "data/SP100.txt";
+	private static final String OUT_DIR = ROOT_DIR + "GIT/simulations/";
+	private static final String HIST_DIR = ROOT_DIR + "History/data/";
+	private static final String SHARE_NAMES = ROOT_DIR + "History/SP100.txt";
 	private static final String JULIA_CMD = "C:\\Users\\dell\\AppData\\Local\\Julia-0.5.2\\bin\\julia";
 	private static final double MIN_SHARE = 0.0001; // minimal share of a stock we accept in a portfolio  
 	private static final double BUDGET = 100000.0; 
@@ -153,11 +155,11 @@ public class StockSimulator {
 		}
 		readSplits("splits.txt");
 		
-		double[] risks = new double[]{0.003, 0.005, 0.015, 0.075, 0.375}; // , 0.005, 0.015, 0.075, 0.375
-		int[] period_length = new int[]{3}; // 1,3,6,12
+		double[] risks = new double[]{0.001, 0.003, 0.005, 0.015, 0.075, 0.150, 0.375}; // , 0.005, 0.015, 0.075, 0.375
+		int[] period_length = new int[]{1,2,3,4,6,12};
 		int[] benef_period_length = new int[]{3}; //,6,9,12};
 		int[] benef_periods = new int[]{12}; //{6,12,18,24};
-		String strat = STRATEGY_MPT;
+		String strat = STRATEGY_DIV;
 		// overwriting defaults with command line arguments
 		for (int s =0 ; s<args.length; s++) {
 	       switch (args[s]) {
@@ -193,7 +195,7 @@ public class StockSimulator {
 				final int len = period_length[i];
 				final int benef_per = benef_periods[per]; // 12
 
-				final int benef_len = benef_period_length[per_len]; // len; in the article I use 'len' - the estimation period should be as long as the rebalance period
+				final int benef_len = len; //benef_period_length[per_len]; // len; in the article I use 'len' - the estimation period should be as long as the rebalance period
 				final double risk = risks[r];
 				final String strategy = strat;
 				
@@ -203,7 +205,7 @@ public class StockSimulator {
 							BigDecimal assets = simulate(strategy, 2000, (MONTHS_IN_YEAR*16)/len, len, 
 															benef_per, benef_len, risk, new BigDecimal(BUDGET));
 									// year, sim_periods in months, period_length, risk_ret_periods, risk_ret_period_len, min_ret
-							System.out.print("(" + risk + "," + len + ","+ benef_per + ","+ benef_len + "," + assets + ")\n");
+							System.out.print("(" + strategy + "," + risk + "," + len + ","+ benef_per + ","+ benef_len + "," + assets + ")\n");
 							
 						} catch (IOException e) {
 							e.printStackTrace();
@@ -220,9 +222,8 @@ public class StockSimulator {
 	private static BigDecimal simulate (String strategy, int year, int sim_periods, // in month
 		    					int period_length, int benef_ret_periods, int benef_ret_period_len,
 		    					double return_or_risk, BigDecimal wallet) throws IOException {
-		FileWriter fr = new FileWriter(new File(ROOT_DIR + strategy+
-				"-"+period_length+"-"
-		    					+(return_or_risk+"").replace('.', '_')+"-" + benef_ret_periods +"-"+ benef_ret_period_len +".html"));
+		FileWriter fr = new FileWriter(new File(OUT_DIR + strategy + "-" + period_length+"-"
+		    	+(return_or_risk+"").replace('.', '_')+"-" + benef_ret_periods +"-"+ benef_ret_period_len +".html"));
 		BufferedWriter bw = new BufferedWriter(fr);
 		bw.write("<table>" + style + "<BODY>");
 		bw.write("Number of periods: " + sim_periods + "<BR>\n");
@@ -327,18 +328,18 @@ public class StockSimulator {
 		double[][] cov = Covar(benef); //= myCov(idx, periods_number, benef, mean); // TODO: double[][] cov = new Covariance(benef).getCovarianceMatrix().getData();
 		
 		String ident = per_len +"-"+ (min_r+"").replace('.', '_')+"-" + periods_number +"-"+ period_length;
-		String outFile = ROOT_DIR + "solver-"+ ident +".out";
+		String outFile = OUT_DIR + "solver-"+ ident +".out";
 		if (type == MINIMIZE) {
-			String cmd = ROOT_DIR + "solver-"+ ident +".py";
+			String cmd = OUT_DIR + "solver-"+ ident +".py";
 			constructPythonTask(cov, mean, min_r, cmd, outFile);
 			runOsCmd("python " + cmd);
 		}
 		else { // MAXIMIZE
-			/*String cmd = ROOT_DIR + "solver-"+ ident +".jl";
+			/*String cmd = OUT_DIR + "solver-"+ ident +".jl";
 			constructJuliaTask(cov, mean, min_r, cmd, outFile);
 			runJulia(JULIA_CMD + " "+ cmd + " >> julia.out 2>>nul");
 			*/
-			String cmd = ROOT_DIR + "solver-"+ ident +".py";
+			String cmd = OUT_DIR + "solver-"+ ident +".py";
 			constructPythonTaskMax(cov, mean, min_r, cmd, outFile);
 			runOsCmd("python " + cmd);
 		}
@@ -548,7 +549,9 @@ public class StockSimulator {
 			if (i == periods_number) { // = we found share prices in all periods 
 				if (lastPrice == null || lastPrice.price == null || lastPrice.price.equals(0.0)
 						|| veryFirstPrice == null || veryFirstPrice.price.equals(0.0)) continue; // don't consider this share
-				if (StatUtils.variance(dividends) > max_risk) continue; // a too risky stock
+				if (StatUtils.variance(benefitsSolv[idx]) > max_risk) { // earlier 'dividends'
+					continue; // a too risky stock
+				}
 				/*
 				if (!div_was_paid_year_ago(startDate, period_length, periods_number, historicDividends)) // in_analogous_period
 					continue; // we are looking for shares which are probable to give dividend in that period (month?)
@@ -593,8 +596,8 @@ public class StockSimulator {
 			return createSimplePortfolio(max_shares, benefits, budget, goodTickers, lastClose, bw);
 		else
 		{ 	String ident = periods_number +"-"+ period_length+"-" +per_len +"-"+ (max_risk+"").replace('.', '_') ;
-			String outFile = ROOT_DIR + "solver-"+ ident +".out";
-			String cmd = ROOT_DIR + "solver-"+ ident +".jl";
+			String outFile = OUT_DIR + "solver-"+ ident +".out";
+			String cmd = OUT_DIR + "solver-"+ ident +".jl";
 			double[][] benef = crympData(benefitsSolv,  idx, periods_number);
 			double[] mean = countMean (idx, benef, periods_number);
 			double[][] cov = Covar(benef);// myCov(idx, periods_number, benef, mean); // TODO: double[][] cov = new Covariance(benef).getCovarianceMatrix().getData();
@@ -626,7 +629,7 @@ public class StockSimulator {
 		List<StockInPortfolio> portfolio = new ArrayList<StockInPortfolio>();
 		BigDecimal total = new BigDecimal(0.0);
 		double share = (1.0/(double)max_shares);
-		double avg = 0.0; // for one of sharts in article about dividend yields over time
+		double avg = 0.0; // for one of charts in article about dividend yields over time
 		for (int s=0; s<max_shares; s++) {
 			// find the best 
 			List<Double> list = Arrays.stream(benefits).boxed().collect(Collectors.toList());
@@ -796,7 +799,7 @@ public class StockSimulator {
 	
 	private static List<Close> readHistory(String ticker, String suffix, int idx) {
 		List<Close> hist = new ArrayList<Close>();
-		try (BufferedReader br = new BufferedReader(new FileReader(ROOT_DIR + "data/"+ ticker + suffix))) {
+		try (BufferedReader br = new BufferedReader(new FileReader(HIST_DIR + ticker + suffix))) {
 			br.readLine(); // ignoring the header line
 			while (br.ready()) {
 				String[] values = br.readLine().split(",");
@@ -815,21 +818,22 @@ public class StockSimulator {
 	}
 	
 	private static void readSplits(String fileName) {
-		try (BufferedReader br = new BufferedReader(new FileReader(ROOT_DIR + "data/"+ fileName))) {
+		String file = HIST_DIR + fileName;
+		try (BufferedReader br = new BufferedReader(new FileReader(file))) {
 			while (br.ready()) {
 				String[] values = br.readLine().split(",");
 				splits.add(new Split(values[0], values[1], values[2]));
 			}
 		}
 		catch (IOException ioe) {
-			System.out.println("readSplits failed ");
+			System.out.println("readSplits failed: " + file);
 			System.exit(0);
 		}
 	}
 	
 	private static List<Stock> readStockName(String ticker, String suffix) {
 		List<Stock> hist = new ArrayList<Stock>();
-		try (BufferedReader br = new BufferedReader(new FileReader(ROOT_DIR + "data/"+ ticker + suffix))) {
+		try (BufferedReader br = new BufferedReader(new FileReader(HIST_DIR + "data/"+ ticker + suffix))) {
 			while (br.ready()) {
 				String line = br.readLine();
 				line = line.replace("\",\"", "\"|\""); // there might be commas in values & line.split("|") does not work

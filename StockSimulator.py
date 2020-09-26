@@ -11,7 +11,7 @@ history_periods_number = 12 # in sample
 history_period_length = 3
 periods_number = 64
 period_length = 3
-max_risk = 0.003
+max_risk = 0.001
 strategy = 'MPT'
 
 if len(sys.argv) == 7: 
@@ -32,7 +32,10 @@ print("period_length:", period_length)
 print("max_risk: ", max_risk)
 
 print("START: ", datetime.now())
-sp100 = "C:\\home\\dell\\DIVID\\GIT\\tiingo\\SP100.txt"
+root = "C:\\home\\dell\\DIVID\\History\\"
+history_dir = 'yahoo2tiingo'
+summary_file = 'summary.txt'
+sp100 = root + "SP100.txt"
 tickers = open(sp100).read().split('\n')
 
 def readHistory():
@@ -40,10 +43,13 @@ def readHistory():
     for t in tickers:
         if len(t)<=0:
             continue
-        path = 'C:\\home\\dell\\DIVID\\Tiingo\\'+ t +'.json'
-        if os.path.getsize(path)>100:
-            input_file = open(path)
-            quotes[t] = json.load(input_file)
+        path = root + history_dir + '\\'+ t +'.json'
+        try:
+            if os.path.getsize(path)>100:
+                input_file = open(path)
+                quotes[t] = json.load(input_file)
+        except FileNotFoundError:
+            quotes[t]=[]
     return quotes
 
 def findFirstQuote(dateFrom, symbol): # first after the date: (a,b>
@@ -81,27 +87,40 @@ def sumDivid(idxFrom, idxTo, symbol):
     return sum
 
 def solve(rets):
-    benf = np.array(rets)
-    mu = benf.mean(axis=1) # to take the mean of each row
-    x = Variable(len(mu))
-    covar = np.cov(rets)
-    risk = quad_form(x, covar)
-    ret = mu.T@x
-    constraints = [sum(x) <= 1.0, x>=0, risk<=max_risk]
-    Problem(Maximize(ret), constraints).solve(solver=SCS)
-    weights = [0] * len(mu)
-    for i in range(len(mu)):
-        weights[i] = x.value[i]
-    return weights
+    try:
+        benf = np.array(rets)
+        mu = benf.mean(axis=1) # to take the mean of each row
+        x = Variable(len(mu))
+        covar = np.cov(rets)
+        risk = quad_form(x, covar)
+        ret = mu.T@x
+        constraints = [sum(x) <= 1.0, x>=0, risk<=max_risk]
+        Problem(Maximize(ret), constraints).solve(solver=SCS)
+        weights = [0] * len(mu)
+        for i in range(len(mu)):
+            weights[i] = x.value[i]
+        return weights
+    except:
+        print("Solver error")
+        return []
 
 def solveDiv(benf):
     means = {}
     # what was the mean value of dividend ratio troughout history
     for k in benf.keys():
+        if np.var(benf[k]) > max_risk:
+            continue
         means[k] = np.average(benf[k])
     # now get the best ones
     srtd = {k: v for k, v in sorted(means.items(), key=lambda item: item[1], reverse=True)}
-
+    # print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+    # for k in benf.keys():
+    #     print(k,benf[k])
+    #     print(k,np.var(benf[k]))
+    # print("**************************************")
+    # print(srtd)
+    # print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+    exit()
     stocks_in_portfolio = 4
     x = [1/stocks_in_portfolio] * stocks_in_portfolio
     syms = []
@@ -152,7 +171,7 @@ def sellPortfolio(portf, date):
         idx = findLastQuote(date, sym)
         price = data[sym][idx]["close"]
         cash += price * vol
-        print('(',sym,',',vol,',', price,')')
+        print('(',sym,',',(int)(vol),',', price,')')
     print("Sold for: ", round(cash, 2), "\n----------------------------------------")
     return cash
 
@@ -195,15 +214,19 @@ def buyPortfolio(symbols, weights, budget, date):
     i = 0
     for sym in symbols:
         weight = weights[i]
+        i=i+1
+        if weight < 0.01: # ignore shares with percentage/participation below 1%
+            continue
+        if weight > 1.0: # solver somtimes gives more that 100% ;)
+            weight = 1.0
         idx = findLastQuote(date, sym)
         price = data[sym][idx]["close"]
         b = budget * weight
-        vol = b // price
+        vol = b // price # floor
         if vol > 0:
             portf[sym] = vol
             left -= vol * price
-            print('(', sym, ',', round(weight*100, 1), '%', ',', vol, ',', price, ')')
-        i=i+1
+            print('(', sym, ',', round(weight*100, 1), '%', ',',(int)(vol), ',', price, ')')
     print("\nBought for: ", round((budget-left), 2))
     return portf, left
 
@@ -212,24 +235,32 @@ startDate = date.fromisoformat('2000-01-01')
 portfolio = {} # empty
 wallet = 100000
 date = date.fromisoformat('2030-01-01')     # to skip some calculations at start
+assets = 0 # for final summary
 
-
-for i in range (0, periods_number):
+for i in range (0, periods_number+1): 
     print("========================================================")
     prevDate = date
     date = startDate + dateutil.relativedelta.relativedelta(months= i*period_length)
     print("Rebuild on ", date)
-    div, portfolio = paidDividends(portfolio, prevDate, date)
-    wallet += div
-    wallet += sellPortfolio(portfolio, date)
+    if len(portfolio)>0:
+        div, portfolio = paidDividends(portfolio, prevDate, date)
+        wallet += div
+        wallet += sellPortfolio(portfolio, date)
+    portfolio = {} # in case solver fails
+    assets = wallet
     newStocks, newWeights = findNewPortfolio(date, history_periods_number, history_period_length, strategy)
     #print(newStocks, newWeights)
-    portfolio, left = buyPortfolio(newStocks, newWeights, wallet, date)
-    wallet = left
-    print("Wallet: ", round(wallet, 2))
+    if len(newWeights) > 0: # no solver error
+        portfolio, left = buyPortfolio(newStocks, newWeights, wallet, date)
+        wallet = left
+    # else: just skip rebuild, we will keep this portfolio
+    print("Wallet after purchase: ", round(wallet, 2))
 
 print("STOP: ", datetime.now())
 
+f = open(root + summary_file, "a")
+f.write('%s, %s, %d, %5.3f, %13.2f\n' % (history_dir, strategy, period_length, max_risk, assets))
+f.close()
 
 # ben = [[0.1383,-0.2029,-0.0649,0.0038,-0.0599,-0.1795,-0.4472,0.0072,0.6517,-0.1539,0.0981,0.2969],
 #     [0.2228,-0.2019,0.158,0.3695,-0.1357,-0.0904,-0.3103,0.1483,0.1258,-0.2361,0.0554,0.3092],
