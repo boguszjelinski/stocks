@@ -56,8 +56,10 @@ def compare(one, two):
     price_bad_count =0
     divid_good_count=0
     divid_bad_count =0
+    divid_is_zero_count=0
     split_good_count=0
     split_bad_count =0
+    split_is_one_count=0
 
     for s in tickers:
         #print(s, len(one[s]), len(two[s]))
@@ -69,8 +71,10 @@ def compare(one, two):
             price_is_good= False
             divid_is_bad = False
             divid_is_good= False
+            divid_is_zero= False # concerns divid_is_bad only
             split_is_bad = False
             split_is_good= False
+            split_is_one = False # concenrs split_is_bad only
             
             for t in two[s]:
                 if o['date'][0:10]==t['date'][0:10]: 
@@ -82,11 +86,15 @@ def compare(one, two):
                     if abs(o['divCash'] - t['divCash']) > 0.1:
                         #print("Sym:",s," Date:", o['date'][0:10], " different 'divCash':",o['divCash'],"<>",t['divCash'])
                         divid_is_bad = True
+                        if t['divCash'] == 0.0:
+                            divid_is_zero = True # it means that 't' dataset is missing this information
                     elif o['divCash'] != 0.0 or t['divCash'] != 0.0: # don't count zeros
                         divid_is_good = True # just to have an indication that a date was found
                     if abs (o['splitFactor'] - t['splitFactor']) > 0.1:
                         #print("Sym:",s," Date:", o['date'][0:10], " different 'splitFactor':",o['splitFactor'],"<>",t['splitFactor'])
                         split_is_bad= True
+                        if t['splitFactor'] == 1.0:
+                            split_is_one = True # it means that 't' dataset is missing this information
                     elif o['splitFactor'] != 1.0 or t['splitFactor'] != 1.0: # don't count "no split"
                         split_is_good = True
                     break
@@ -96,18 +104,24 @@ def compare(one, two):
                 price_good_count = price_good_count +1
             if divid_is_bad:
                 divid_bad_count = divid_bad_count+1
+            if divid_is_zero:
+                divid_is_zero_count = divid_is_zero_count+1
             if divid_is_good:
                 divid_good_count = divid_good_count +1
             if split_is_bad:
                 split_bad_count = split_bad_count+1
+            if split_is_one:
+                split_is_one_count = split_is_one_count+1
             if split_is_good:
                 split_good_count = split_good_count +1
     print ("Price good count", price_good_count)
     print ("Price bad count", price_bad_count)
     print ("Divid good count", divid_good_count)
     print ("Divid bad count", divid_bad_count)
+    print ("Divid is-zero count", divid_is_zero_count)
     print ("Split good count", split_good_count)
     print ("Split bad count", split_bad_count)
+    print ("Split is-one count", split_is_one_count)
 print("START: ", datetime.now())
 print("Loading yahoo2tiingo")
 yahoo = readHistory('yahoo2tiingo')
@@ -123,10 +137,14 @@ quandl = readCsv('Quandl',4,6,7)
 #print(len(quandl))
 
 
-print('Check tiingo against yahoo:')
-compare(tiingo, yahoo)
-print('Check quandl against yahoo:')
-compare(quandl, yahoo)
+# print('Check tiingo against yahoo:')
+# compare(tiingo, yahoo)
+# print('Check yahoo against tiingo:')
+# compare(yahoo, tiingo)
+# print('Check quandl against yahoo:')
+# compare(quandl, yahoo)
+print('Check yahoo against quandl:')
+compare(yahoo, quandl)
 
 #print('Check yahoo against tiingo:')
 #compare(yahoo, tiingo)
@@ -136,8 +154,13 @@ compare(quandl, yahoo)
 #print('Check vantage against tiingo:')
 #compare(vantage, tiingo)
 
-#print('Check tiingo against quandl:')
-#compare(tiingo, quandl)
+
+print('Check tiingo against quandl:')
+compare(tiingo, quandl)
+
+print('Check quandl against tiingo :')
+compare(quandl, tiingo )
+
 #print('Check tiingo against yfinance:')
 #compare(tiingo, yfinance)
 

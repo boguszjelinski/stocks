@@ -8,22 +8,28 @@ import numpy as np
 import pyscipopt.scip as scip
 
 history_periods_number = 12 # in sample
-history_period_length = 3
+history_period_length = -1
 periods_number = 64
 period_length = 3
 max_risk = 0.001
 strategy = 'MPT'
 
-if len(sys.argv) == 7: 
+if len(sys.argv) >= 7: 
     for i, arg in enumerate(sys.argv):
         if arg == "-period_length":
             period_length = int(sys.argv[i+1])
-            history_period_length = period_length
             periods_number = int(16*12 / period_length)
         if arg == "-max_risk":
             max_risk = float(sys.argv[i+1])
         if arg == "-strategy":
             strategy = sys.argv[i+1]
+        if arg == "-history_period_length":
+            history_period_length = int(sys.argv[i+1])
+        if arg == "-history_periods_number":
+            history_periods_number = int(sys.argv[i+1])
+
+if history_period_length == -1:
+    history_period_length = period_length
 
 print("history_periods_number: ", history_periods_number)
 print("history_period_length:", history_period_length)
@@ -33,7 +39,7 @@ print("max_risk: ", max_risk)
 
 print("START: ", datetime.now())
 root = "C:\\home\\dell\\DIVID\\History\\"
-history_dir = 'yahoo2tiingo'
+history_dir = 'tiingo'
 summary_file = 'summary.txt'
 sp100 = root + "SP100.txt"
 tickers = open(sp100).read().split('\n')
@@ -120,7 +126,7 @@ def solveDiv(benf):
     # print("**************************************")
     # print(srtd)
     # print("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-    exit()
+    #exit()
     stocks_in_portfolio = 4
     x = [1/stocks_in_portfolio] * stocks_in_portfolio
     syms = []
@@ -248,6 +254,9 @@ for i in range (0, periods_number+1):
         wallet += sellPortfolio(portfolio, date)
     portfolio = {} # in case solver fails
     assets = wallet
+    #f = open(root + "assets-"+strategy+str(period_length)+"-"+str(max_risk)+".txt", "a")
+    #f.write('%13.2f\n' % (assets))
+    #f.close()
     newStocks, newWeights = findNewPortfolio(date, history_periods_number, history_period_length, strategy)
     #print(newStocks, newWeights)
     if len(newWeights) > 0: # no solver error
@@ -259,7 +268,7 @@ for i in range (0, periods_number+1):
 print("STOP: ", datetime.now())
 
 f = open(root + summary_file, "a")
-f.write('%s, %s, %d, %5.3f, %13.2f\n' % (history_dir, strategy, period_length, max_risk, assets))
+f.write('%s, %s, %d, %5.3f, %d, %d, %13.2f\n' % (history_dir, strategy, period_length, max_risk, history_period_length, history_periods_number, assets))
 f.close()
 
 # ben = [[0.1383,-0.2029,-0.0649,0.0038,-0.0599,-0.1795,-0.4472,0.0072,0.6517,-0.1539,0.0981,0.2969],
