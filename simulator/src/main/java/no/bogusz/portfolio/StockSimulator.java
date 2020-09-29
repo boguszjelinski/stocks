@@ -155,10 +155,10 @@ public class StockSimulator {
 		}
 		readSplits("splits.txt");
 		
-		double[] risks = new double[]{0.001, 0.003, 0.005, 0.015, 0.075, 0.150, 0.375}; // , 0.005, 0.015, 0.075, 0.375
-		int[] period_length = new int[]{1,2,3,4,6,12};
-		int[] benef_period_length = new int[]{3}; //,6,9,12};
-		int[] benef_periods = new int[]{12}; //{6,12,18,24};
+		double[] risks = new double[]{0.005}; //, 0.003, 0.005, 0.015, 0.075, 0.150, 0.375}; // , 0.005, 0.015, 0.075, 0.375
+		int[] period_length = new int[]{12}; //1,2,3,4,6,12};
+		int[] benef_period_length = new int[]{3,6,9,12};
+		int[] benef_periods = new int[]{6,12,18,24};
 		String strat = STRATEGY_DIV;
 		// overwriting defaults with command line arguments
 		for (int s =0 ; s<args.length; s++) {
