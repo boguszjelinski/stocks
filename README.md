@@ -3,7 +3,7 @@ This repo contains trading simulators that I used to backtest "dividend portfoli
 
 There are three simulators written by me not only to help you get rid of the programing language barrier (Java, Julia, Python; an old one in C) but also to verify results. Before any optimization the Java one is the fastest (well, it calls Python and Julia to make use of a solver), Julia seems to be very resource-hungry but popularity of the language grows. You will find out how to run them in chapters below. But first you need to download historical data. Java runs only on Yahoo file format. Python runs only on Tiingo format, but here we have simple converters from Quandl and Yahoo. All simulators have some hardcoded paths to input data and hardcoded defaults, you (or me :-) ) will have to adjust them by hand. 
 
-One important warning based on my own results - small differences in historical data (and there are vital) or simulator implementation can lead to significant differences in the terminal wealth of a long-term strategy. We need better historical data. 
+One important warning based on my own results - small differences in historical data (and there are vital ones) or simulator implementation can lead to significant differences in the terminal wealth of a long-term strategy. We need better historical data. 
 
 ## Tiingo
 You need to claim your credentials before you can download data: https://api.tiingo.com/documentation/end-of-day#Software
@@ -17,8 +17,7 @@ get-tiingo.py script uses basic authentication header, user and password need to
 ```
 
 ## Yahoo
-I have downloaded price and dividend data directly from Yahoo website in 2016 when they were available. I have created dataset with splits separately. 
-These were CSV files, with prices:
+I downloaded price and dividend data directly from Yahoo website in 2016 when they were available. I have created dataset with splits separately. These were CSV files, with prices:
 
     Date,Open,High,Low,Close,Volume,Adj Close
     2016-06-24,92.910004,94.660004,92.650002,93.400002,72894000,93.400002

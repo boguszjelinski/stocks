@@ -13,6 +13,8 @@ periods_number = 64
 period_length = 3
 max_risk = 0.001
 strategy = 'MPT'
+startDate = date.fromisoformat('2000-01-01')
+wallet = 100000
 
 if len(sys.argv) >= 7: 
     for i, arg in enumerate(sys.argv):
@@ -237,9 +239,7 @@ def buyPortfolio(symbols, weights, budget, date):
     return portf, left
 
 data = readHistory()
-startDate = date.fromisoformat('2000-01-01')
 portfolio = {} # empty
-wallet = 100000
 date = date.fromisoformat('2030-01-01')     # to skip some calculations at start
 assets = 0 # for final summary
 
